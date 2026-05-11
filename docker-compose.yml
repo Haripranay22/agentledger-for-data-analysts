@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agentledger_postgres
+    environment:
+      POSTGRES_USER: agentledger
+      POSTGRES_PASSWORD: agentledger
+      POSTGRES_DB: agentledger
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentledger"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: agentledger_langfuse
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://agentledger:agentledger@postgres:5432/agentledger
+      NEXTAUTH_SECRET: agentledger-dev-secret-change-in-prod
+      NEXTAUTH_URL: http://localhost:3000
+      SALT: agentledger-salt
+
+volumes:
+  postgres_data:

@@ -1,0 +1,20 @@
+scenario_id: "scn_001_stable_w2"
+description: "Stable W-2 employee, clean profile — should approve"
+borrower:
+  monthly_income: 5500
+  income_source: "W2"
+  rent: 1800
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [70, 90]
+  recommendation: "approve"
+  must_include_factors: ["stable_income", "low_dti"]
+  must_not_include: ["income_instability", "gambling"]
+metrics:
+  avg_monthly_income: 5500
+  income_cv: 0.08
+  dti_ratio: 0.28
+  nsf_count: 0
+  cash_buffer_days: 45
+  rent_to_income_ratio: 0.33

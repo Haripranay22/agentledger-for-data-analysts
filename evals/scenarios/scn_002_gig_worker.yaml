@@ -1,0 +1,20 @@
+scenario_id: "scn_002_gig_worker"
+description: "Gig/freelance worker — irregular income, no NSF, moderate risk"
+borrower:
+  monthly_income: 4200
+  income_source: "gig"
+  rent: 1400
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [40, 65]
+  recommendation: "approve_with_conditions"
+  must_include_factors: ["income_instability", "gig_income"]
+  must_not_include: ["gambling", "stable_income"]
+metrics:
+  avg_monthly_income: 4200
+  income_cv: 0.42
+  dti_ratio: 0.31
+  nsf_count: 0
+  cash_buffer_days: 18
+  rent_to_income_ratio: 0.33

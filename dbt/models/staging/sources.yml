@@ -1,0 +1,62 @@
+version: 2
+
+sources:
+  - name: plaid
+    description: "Raw Plaid transaction data landed from S3"
+    schema: raw
+    tables:
+      - name: raw_transactions
+        description: "One row per bank transaction, as received from Plaid"
+        columns:
+          - name: transaction_id
+            description: "Plaid transaction ID — globally unique"
+            tests: [unique, not_null]
+          - name: amount
+            description: "Positive = credit (income), negative = debit"
+            tests:
+              - not_null
+              - accepted_range:
+                  min_value: -50000
+                  max_value: 50000
+          - name: transaction_date
+            description: "Date of transaction"
+            tests: [not_null]
+
+  - name: ml
+    description: "Categorization output from the ML pipeline"
+    schema: ml_output
+    tables:
+      - name: categorizations
+        description: "ML + LLM category for each transaction"
+        columns:
+          - name: transaction_id
+            tests: [unique, not_null]
+          - name: our_category
+            tests:
+              - not_null
+              - accepted_values:
+                  values:
+                    - income_salary
+                    - income_freelance
+                    - income_government
+                    - income_other
+                    - rent_mortgage
+                    - utilities
+                    - groceries
+                    - dining_entertainment
+                    - transportation
+                    - healthcare
+                    - debt_payment
+                    - subscription
+                    - gambling
+                    - atm_cash
+                    - transfer
+                    - nsf_fee
+                    - savings_investment
+                    - other
+          - name: confidence_score
+            tests:
+              - not_null
+              - accepted_range:
+                  min_value: 0.0
+                  max_value: 1.0
