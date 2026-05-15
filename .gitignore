@@ -42,3 +42,6 @@ Thumbs.db
 
 # Langfuse / local state
 langfuse_data/
+
+# Generated report output
+reports/

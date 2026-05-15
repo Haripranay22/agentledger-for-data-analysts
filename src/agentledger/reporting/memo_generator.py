@@ -109,5 +109,5 @@ class MemoGenerator:
         output_dir.mkdir(parents=True, exist_ok=True)
         md = self.generate_markdown(state)
         path = output_dir / f"memo_{state.user_id}_{state.run_id[:8]}.md"
-        path.write_text(md)
+        path.write_text(md, encoding="utf-8")
         return path
