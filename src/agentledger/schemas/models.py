@@ -118,6 +118,7 @@ class WorkflowState(BaseModel):
     loan_purpose: str | None = None
 
     # Populated as pipeline progresses
+    raw_transactions: list[Transaction] = Field(default_factory=list)
     transactions: list[CategorizedTransaction] = Field(default_factory=list)
     metrics: CashFlowMetrics | None = None
     risk_assessment: RiskAssessment | None = None

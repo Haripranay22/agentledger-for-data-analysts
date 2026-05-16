@@ -45,3 +45,6 @@ langfuse_data/
 
 # Generated report output
 reports/
+
+# Trained ML model artifacts (regenerate with scripts/train_categorizer.py)
+models/*.pkl

@@ -12,6 +12,8 @@ import logging
 import os
 import time
 import uuid
+from datetime import date
+from pathlib import Path
 from typing import Any
 
 from agentledger.analysis.cash_flow import compute_metrics
@@ -26,38 +28,162 @@ from agentledger.schemas.models import (
 logger = logging.getLogger(__name__)
 
 
-def ingest_node(state: WorkflowState, context: dict[str, Any]) -> WorkflowState:
+def ingest_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
     """
-    Pull transactions from Plaid and persist raw JSON to S3.
-    Populated: state.transactions (pre-categorization)
+    Pull transactions from Plaid sandbox.
+    Writes: state.raw_transactions (plain Transaction objects, no categorization yet).
     """
-    logger.info("[ingest] Starting for user=%s", state.user_id)
-    # TODO Week 1: wire up PlaidClient + S3 persistence
+    from agentledger.connectors.plaid_client import PlaidClient
+
     state.run_id = str(uuid.uuid4())
+    logger.info("[ingest] run_id=%s | user=%s", state.run_id, state.user_id)
+
+    client_id = os.environ.get("PLAID_CLIENT_ID")
+    secret = os.environ.get("PLAID_SECRET")
+    if not client_id or not secret:
+        raise RuntimeError("PLAID_CLIENT_ID and PLAID_SECRET must be set in .env")
+
+    # Access token: caller passes via context, or fall back to env var
+    ctx = context or {}
+    access_token = (
+        ctx.get("access_token")
+        or os.environ.get(f"PLAID_ACCESS_TOKEN_{state.user_id.upper()}")
+        or os.environ.get("PLAID_ACCESS_TOKEN")
+    )
+    if not access_token:
+        raise RuntimeError(
+            f"No Plaid access_token for user={state.user_id}. "
+            "Set PLAID_ACCESS_TOKEN in .env or pass via context['access_token']."
+        )
+
+    plaid_env = os.environ.get("PLAID_ENV", "sandbox")
+    client = PlaidClient(client_id=client_id, secret=secret, env=plaid_env)
+    state.raw_transactions = client.get_transactions(
+        access_token=access_token,
+        user_id=state.user_id,
+        months=int(os.environ.get("PLAID_MONTHS", "6")),
+    )
+    logger.info("[ingest] Pulled %d raw transactions", len(state.raw_transactions))
     return state
 
 
-def profile_node(state: WorkflowState, context: dict[str, Any]) -> WorkflowState:
+def profile_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
     """
-    Data quality checks + schema validation.
-    Rejects malformed transactions before they reach the ML layer.
+    Data quality gate: drops malformed transactions before they reach the ML layer.
+    Writes: state.raw_transactions (filtered — same type, fewer rows).
     """
-    logger.info("[profile] Running DQ checks on %d transactions", len(state.transactions))
-    # TODO Week 1: implement DQ checks (null fields, future dates, amount bounds)
+    today = date.today()
+    original = len(state.raw_transactions)
+    passed = []
+
+    for txn in state.raw_transactions:
+        issues = []
+        if not txn.description.strip():
+            issues.append("empty description")
+        if not txn.account_id.strip():
+            issues.append("empty account_id")
+        if txn.transaction_date > today:
+            issues.append(f"future-dated ({txn.transaction_date})")
+
+        if issues:
+            logger.warning(
+                "[profile] DROP tx=%s | %s", txn.transaction_id, "; ".join(issues)
+            )
+        else:
+            if abs(txn.amount) > 50_000:
+                logger.warning(
+                    "[profile] SUSPICIOUS tx=%s | amount=%.2f — keeping but flagged",
+                    txn.transaction_id, txn.amount,
+                )
+            passed.append(txn)
+
+    state.raw_transactions = passed
+    dropped = original - len(passed)
+    logger.info(
+        "[profile] DQ complete | passed=%d / original=%d | dropped=%d (%.1f%% pass rate)",
+        len(passed), original, dropped,
+        100.0 * len(passed) / max(original, 1),
+    )
     return state
 
 
-def categorize_node(state: WorkflowState, context: dict[str, Any]) -> WorkflowState:
+def categorize_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
     """
     Hybrid ML + LLM categorization.
-    ML model handles 90%+ of cases; LLM fallback for confidence < 0.70.
+    Reads:  state.raw_transactions (plain Transaction objects from profile_node).
+    Writes: state.transactions (CategorizedTransaction objects).
+    ML model handles ~90% of cases; LLM fallback for confidence < 0.70.
     """
-    logger.info("[categorize] Categorizing %d transactions", len(state.transactions))
-    # TODO Week 1: wire up TransactionCategorizer
+    from agentledger.ml.categorizer import TransactionCategorizer
+
+    if not state.raw_transactions:
+        logger.warning("[categorize] No raw transactions to categorize — skipping")
+        return state
+
+    ctx = context or {}
+    model_path = Path(
+        ctx.get("model_path")
+        or os.environ.get("CATEGORIZER_MODEL_PATH", "models/categorizer.pkl")
+    )
+    if not model_path.exists():
+        raise RuntimeError(
+            f"Categorizer model not found at {model_path}. "
+            "Run: python scripts/train_categorizer.py"
+        )
+
+    categorizer = TransactionCategorizer(model_path=model_path)
+    state.transactions = categorizer.categorize(
+        state.raw_transactions,
+        llm_fallback_fn=_build_llm_category_fallback(),
+    )
+    logger.info("[categorize] %d transactions categorized", len(state.transactions))
     return state
 
 
-def analyze_node(state: WorkflowState, context: dict[str, Any]) -> WorkflowState:
+def _build_llm_category_fallback():
+    """
+    Returns a function: Transaction → category_str.
+    Used by TransactionCategorizer when ML confidence < 0.70.
+    Calls Groq with a minimal prompt — no Pydantic overhead needed here.
+    """
+    import os
+    from agentledger.ml.categorizer import CATEGORIES
+
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        logger.warning("[categorize] GROQ_API_KEY not set — LLM fallback disabled")
+        return None
+
+    try:
+        from groq import Groq
+        groq_client = Groq(api_key=api_key)
+        model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+        categories_str = ", ".join(CATEGORIES)
+    except ImportError:
+        return None
+
+    def fallback(txn) -> str:
+        prompt = (
+            f"Classify this bank transaction into exactly one category.\n"
+            f"Merchant: {txn.merchant_name or ''}\n"
+            f"Description: {txn.description}\n"
+            f"Amount: {txn.amount}\n\n"
+            f"Categories: {categories_str}\n\n"
+            f"Reply with only the category name, nothing else."
+        )
+        response = groq_client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=20,
+            temperature=0,
+        )
+        raw = response.choices[0].message.content.strip().lower().replace(" ", "_")
+        return raw if raw in CATEGORIES else "other"
+
+    return fallback
+
+
+def analyze_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
     """
     Compute 8 cash-flow metrics deterministically.
     MUST match dbt SQL output before proceeding.
@@ -83,7 +209,7 @@ def _build_llm_client() -> Any:
     )
 
 
-def risk_assess_node(state: WorkflowState, context: dict[str, Any]) -> WorkflowState:
+def risk_assess_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
     """
     LLM risk analysis (Gemini).
     Receives pre-computed metrics — never asked to do math.
@@ -156,7 +282,7 @@ def risk_assess_node(state: WorkflowState, context: dict[str, Any]) -> WorkflowS
     return state
 
 
-def validate_node(state: WorkflowState, context: dict[str, Any]) -> WorkflowState:
+def validate_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
     """
     Verify every LLM claim against source data.
     Routes back to risk_assess_node if overall_validity < 0.85.
@@ -220,7 +346,7 @@ def validate_node(state: WorkflowState, context: dict[str, Any]) -> WorkflowStat
     return state
 
 
-def hitl_check_node(state: WorkflowState, context: dict[str, Any]) -> WorkflowState:
+def hitl_check_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
     """
     Rules-based escalation to human analyst.
     Escalation triggers: confidence < 0.6, validator rejected > 2 claims,
@@ -252,7 +378,7 @@ def hitl_check_node(state: WorkflowState, context: dict[str, Any]) -> WorkflowSt
     return state
 
 
-def report_node(state: WorkflowState, context: dict[str, Any]) -> WorkflowState:
+def report_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
     """Generate Markdown credit memo + audit log."""
     from pathlib import Path
 

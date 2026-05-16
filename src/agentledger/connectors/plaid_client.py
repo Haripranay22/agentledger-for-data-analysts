@@ -14,6 +14,9 @@ from typing import Any
 
 import plaid
 from plaid.api import plaid_api
+from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
+from plaid.model.products import Products
+from plaid.model.sandbox_public_token_create_request import SandboxPublicTokenCreateRequest
 from plaid.model.transactions_get_request import TransactionsGetRequest
 from plaid.model.transactions_get_request_options import TransactionsGetRequestOptions
 
@@ -92,6 +95,32 @@ class PlaidClient:
             plaid_category=raw.get("category") or [],
             pending=raw.get("pending", False),
         )
+
+    def create_sandbox_access_token(
+        self,
+        institution_id: str = "ins_109508",
+        products: list[str] | None = None,
+    ) -> str:
+        """
+        Create a sandbox access token for a synthetic borrower.
+
+        institution_id ins_109508 = First Platypus Bank (Plaid's canonical sandbox bank).
+        Run this once per synthetic user and store the result in .env as PLAID_ACCESS_TOKEN.
+        """
+        plaid_products = [Products(p) for p in (products or ["transactions"])]
+
+        pt_response = self._client.sandbox_public_token_create(
+            SandboxPublicTokenCreateRequest(
+                institution_id=institution_id,
+                initial_products=plaid_products,
+            )
+        )
+        exchange_response = self._client.item_public_token_exchange(
+            ItemPublicTokenExchangeRequest(public_token=pt_response["public_token"])
+        )
+        access_token: str = exchange_response["access_token"]
+        logger.info("Created sandbox access_token: %s…", access_token[:20])
+        return access_token
 
     def get_raw_json(self, access_token: str, months: int = 6) -> dict[str, Any]:
         """Return raw Plaid response for archiving to S3."""
