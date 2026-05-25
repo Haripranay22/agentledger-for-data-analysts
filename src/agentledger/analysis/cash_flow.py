@@ -42,7 +42,6 @@ def compute_metrics(
     monthly_income: dict[str, float] = defaultdict(float)
     monthly_expenses: dict[str, float] = defaultdict(float)
     monthly_nsf: dict[str, int] = defaultdict(int)
-    monthly_balances: dict[str, list[float]] = defaultdict(list)
     monthly_debt: dict[str, float] = defaultdict(float)
     monthly_discretionary: dict[str, float] = defaultdict(float)
     monthly_rent: dict[str, float] = defaultdict(float)

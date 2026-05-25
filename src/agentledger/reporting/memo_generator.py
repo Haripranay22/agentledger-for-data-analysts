@@ -15,18 +15,20 @@ TODO Week 3: implement full template + WeasyPrint PDF export.
 
 from __future__ import annotations
 
+from datetime import UTC
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agentledger.schemas.models import CashFlowMetrics, RiskAssessment, WorkflowState
+    from agentledger.schemas.models import WorkflowState
 
 
 MEMO_TEMPLATE = """# Credit Analysis Memo
 **Borrower ID:** {{ state.user_id }}
 **Run ID:** {{ state.run_id }}
 **Generated:** {{ generated_at }}
-**Loan Request:** ${{ "%.0f"|format(state.loan_amount) }}{% if state.loan_purpose %} — {{ state.loan_purpose }}{% endif %}
+**Loan Request:** ${{ "%.0f"|format(state.loan_amount) }}
+{%- if state.loan_purpose %} — {{ state.loan_purpose }}{% endif %}
 
 ---
 
@@ -91,9 +93,10 @@ Full audit trail: `logs/audit/run_{{ state.run_id }}.jsonl`
 class MemoGenerator:
     """Generate credit analysis memos from workflow state."""
 
-    def generate_markdown(self, state: "WorkflowState") -> str:
+    def generate_markdown(self, state: WorkflowState) -> str:
         """Render Jinja2 template to Markdown string."""
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from jinja2 import Template
 
         template = Template(MEMO_TEMPLATE)
@@ -101,10 +104,10 @@ class MemoGenerator:
             state=state,
             metrics=state.metrics,
             risk_assessment=state.risk_assessment,
-            generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
         )
 
-    def save(self, state: "WorkflowState", output_dir: Path) -> Path:
+    def save(self, state: WorkflowState, output_dir: Path) -> Path:
         """Save memo as .md and return the path."""
         output_dir.mkdir(parents=True, exist_ok=True)
         md = self.generate_markdown(state)

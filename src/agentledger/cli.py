@@ -52,8 +52,8 @@ def _run_analyze(args: argparse.Namespace) -> None:
 
     print(f"[AgentLedger] Analyzing borrower={args.user_id} loan=${args.loan_amount:,.0f}")
 
-    from agentledger.workflow.graph import credit_analysis_graph
     from agentledger.schemas.models import WorkflowState
+    from agentledger.workflow.graph import credit_analysis_graph
 
     initial_state = WorkflowState(
         user_id=args.user_id,
