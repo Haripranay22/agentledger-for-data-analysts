@@ -1,0 +1,20 @@
+scenario_id: "scn_016_low_rent_affordable"
+description: "W-2 employee with affordable rent (25% of income), healthy surplus — approve"
+borrower:
+  monthly_income: 4000
+  income_source: "W2"
+  rent: 1000
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [15, 50]
+  recommendation: "approve"
+  must_include_factors: ["income"]
+  must_not_include: ["nsf", "overdraft", "gambling"]
+metrics:
+  avg_monthly_income: 4000
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 0
+  cash_buffer_days: 13
+  rent_to_income_ratio: 0.25

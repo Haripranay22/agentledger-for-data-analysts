@@ -1,0 +1,20 @@
+scenario_id: "scn_012_low_income_nsf_decline"
+description: "W-2 with very low income, expenses exceed income, NSF — clear decline"
+borrower:
+  monthly_income: 2500
+  income_source: "W2"
+  rent: 1200
+  has_nsf: true
+  months_data: 6
+expected:
+  risk_score_range: [65, 100]
+  recommendation_any_of: ["decline", "manual_review"]
+  must_include_factors: ["income", "nsf"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 2500
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 1
+  cash_buffer_days: 0
+  rent_to_income_ratio: 0.48
