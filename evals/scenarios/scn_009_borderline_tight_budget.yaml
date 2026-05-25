@@ -1,0 +1,20 @@
+scenario_id: "scn_009_borderline_tight_budget"
+description: "W-2 employee with very tight monthly surplus — borderline case"
+borrower:
+  monthly_income: 3200
+  income_source: "W2"
+  rent: 1400
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [40, 78]
+  recommendation_any_of: ["approve_with_conditions", "manual_review"]
+  must_include_factors: ["income"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 3200
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 0
+  cash_buffer_days: 2
+  rent_to_income_ratio: 0.4375

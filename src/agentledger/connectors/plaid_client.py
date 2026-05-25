@@ -7,7 +7,6 @@ Raw JSON is persisted to S3 before any transformation.
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import date, timedelta
 from typing import Any

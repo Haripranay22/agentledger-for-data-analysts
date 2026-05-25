@@ -1,0 +1,20 @@
+scenario_id: "scn_017_gig_high_income_clean"
+description: "High-income gig worker, no NSF, moderate rent — good candidate despite variability"
+borrower:
+  monthly_income: 6500
+  income_source: "gig"
+  rent: 2000
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [25, 65]
+  recommendation_any_of: ["approve", "approve_with_conditions"]
+  must_include_factors: ["income"]
+  must_not_include: ["nsf", "overdraft", "gambling"]
+metrics:
+  avg_monthly_income: 6500
+  income_cv: 0.25
+  dti_ratio: 0.31
+  nsf_count: 0
+  cash_buffer_days: 11
+  rent_to_income_ratio: 0.308

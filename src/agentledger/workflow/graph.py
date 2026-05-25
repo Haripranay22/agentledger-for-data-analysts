@@ -7,7 +7,8 @@ for the validate → retry → risk_assess loop.
 
 from __future__ import annotations
 
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from agentledger.schemas.models import WorkflowState
 from agentledger.workflow.nodes import (
@@ -38,7 +39,7 @@ def should_retry_or_proceed(state: WorkflowState) -> str:
     return "proceed"
 
 
-def build_graph() -> StateGraph:
+def build_graph() -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile the full credit analysis workflow graph."""
     graph = StateGraph(WorkflowState)
 

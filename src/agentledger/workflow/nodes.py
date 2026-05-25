@@ -140,13 +140,14 @@ def categorize_node(state: WorkflowState, context: dict[str, Any] | None = None)
     return state
 
 
-def _build_llm_category_fallback():
+def _build_llm_category_fallback() -> Any:
     """
     Returns a function: Transaction → category_str.
     Used by TransactionCategorizer when ML confidence < 0.70.
     Calls Groq with a minimal prompt — no Pydantic overhead needed here.
     """
     import os
+
     from agentledger.ml.categorizer import CATEGORIES
 
     api_key = os.environ.get("GROQ_API_KEY")
@@ -162,7 +163,7 @@ def _build_llm_category_fallback():
     except ImportError:
         return None
 
-    def fallback(txn) -> str:
+    def fallback(txn: Any) -> str:
         prompt = (
             f"Classify this bank transaction into exactly one category.\n"
             f"Merchant: {txn.merchant_name or ''}\n"
@@ -177,7 +178,7 @@ def _build_llm_category_fallback():
             max_tokens=20,
             temperature=0,
         )
-        raw = response.choices[0].message.content.strip().lower().replace(" ", "_")
+        raw = (response.choices[0].message.content or "").strip().lower().replace(" ", "_")
         return raw if raw in CATEGORIES else "other"
 
     return fallback
