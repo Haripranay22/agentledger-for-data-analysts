@@ -147,6 +147,7 @@ def _build_llm_category_fallback():
     Calls Groq with a minimal prompt — no Pydantic overhead needed here.
     """
     import os
+
     from agentledger.ml.categorizer import CATEGORIES
 
     api_key = os.environ.get("GROQ_API_KEY")

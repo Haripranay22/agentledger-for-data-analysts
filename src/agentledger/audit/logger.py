@@ -13,8 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +41,7 @@ class AuditLogger:
         """Record a single audit event."""
         record = {
             "run_id": self.run_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "node": node,
             "event_type": event_type,
             "latency_ms": latency_ms,
@@ -62,7 +61,7 @@ class AuditLogger:
         logger.info("Audit log written: %s (%d records)", out_path, len(self._records))
         return out_path
 
-    def __enter__(self) -> "AuditLogger":
+    def __enter__(self) -> AuditLogger:
         return self
 
     def __exit__(self, *_: Any) -> None:
