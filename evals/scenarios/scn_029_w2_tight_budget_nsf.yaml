@@ -1,0 +1,20 @@
+scenario_id: "scn_029_w2_tight_budget_nsf"
+description: "W-2 $3200/mo, high rent ratio (44%), NSF — only 2 buffer days, decline/manual"
+borrower:
+  monthly_income: 3200
+  income_source: "W2"
+  rent: 1400
+  has_nsf: true
+  months_data: 6
+expected:
+  risk_score_range: [60, 100]
+  recommendation_any_of: ["decline", "manual_review"]
+  must_include_factors: ["income", "nsf"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 3200
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 1
+  cash_buffer_days: 2
+  rent_to_income_ratio: 0.44

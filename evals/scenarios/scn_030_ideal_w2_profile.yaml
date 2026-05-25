@@ -1,0 +1,20 @@
+scenario_id: "scn_030_ideal_w2_profile"
+description: "Ideal W-2 borrower: $12k/mo, low rent ($1800), 31-day buffer, zero NSF"
+borrower:
+  monthly_income: 12000
+  income_source: "W2"
+  rent: 1800
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [5, 30]
+  recommendation: "approve"
+  must_include_factors: ["income"]
+  must_not_include: ["nsf", "overdraft", "gambling", "decline"]
+metrics:
+  avg_monthly_income: 12000
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 0
+  cash_buffer_days: 31
+  rent_to_income_ratio: 0.15
