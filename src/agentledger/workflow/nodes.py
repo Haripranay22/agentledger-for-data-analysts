@@ -140,7 +140,7 @@ def categorize_node(state: WorkflowState, context: dict[str, Any] | None = None)
     return state
 
 
-def _build_llm_category_fallback():
+def _build_llm_category_fallback() -> Any:
     """
     Returns a function: Transaction → category_str.
     Used by TransactionCategorizer when ML confidence < 0.70.
@@ -163,7 +163,7 @@ def _build_llm_category_fallback():
     except ImportError:
         return None
 
-    def fallback(txn) -> str:
+    def fallback(txn: Any) -> str:
         prompt = (
             f"Classify this bank transaction into exactly one category.\n"
             f"Merchant: {txn.merchant_name or ''}\n"

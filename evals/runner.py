@@ -26,7 +26,7 @@ import uuid
 from datetime import date, timedelta
 from pathlib import Path
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 

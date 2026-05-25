@@ -70,7 +70,7 @@ def _run_analyze(args: argparse.Namespace) -> None:
     # Persist state as JSON so the dashboard can load it
     output_dir = Path(args.output_dir) / args.user_id
     output_dir.mkdir(parents=True, exist_ok=True)
-    state_path = output_dir / f"state_{final_state.run_id[:8]}.json"
+    state_path = output_dir / f"state_{(final_state.run_id or 'unknown')[:8]}.json"
     state_path.write_text(
         json.dumps(final_state.model_dump(mode="json"), indent=2),
         encoding="utf-8",

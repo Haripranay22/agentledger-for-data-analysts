@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import pickle
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
@@ -138,7 +139,7 @@ class TransactionCategorizer:
     def categorize(
         self,
         transactions: list[Transaction],
-        llm_fallback_fn: callable | None = None,
+        llm_fallback_fn: Callable[[Transaction], str] | None = None,
     ) -> list[CategorizedTransaction]:
         """
         Full categorization pipeline with LLM fallback.

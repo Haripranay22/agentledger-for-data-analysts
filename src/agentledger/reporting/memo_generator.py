@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from agentledger.schemas.models import WorkflowState
@@ -349,7 +349,7 @@ def _score_color(score: int) -> str:
 class MemoGenerator:
     """Generate credit analysis memos from workflow state."""
 
-    def _render_context(self, state: WorkflowState) -> dict:
+    def _render_context(self, state: WorkflowState) -> dict[str, Any]:
         ra = state.risk_assessment
         vr = state.validation_result
         return {
@@ -383,7 +383,8 @@ class MemoGenerator:
 
         output_dir.mkdir(parents=True, exist_ok=True)
         html_str = self.generate_html(state)
-        pdf_path = output_dir / f"memo_{state.user_id}_{state.run_id[:8]}.pdf"
+        run_id = (state.run_id or "unknown")[:8]
+        pdf_path = output_dir / f"memo_{state.user_id}_{run_id}.pdf"
 
         try:
             HTML(string=html_str).write_pdf(str(pdf_path))
@@ -397,7 +398,8 @@ class MemoGenerator:
         """Save memo as .md (always) and .pdf (if WeasyPrint available)."""
         output_dir.mkdir(parents=True, exist_ok=True)
         md = self.generate_markdown(state)
-        md_path = output_dir / f"memo_{state.user_id}_{state.run_id[:8]}.md"
+        run_id = (state.run_id or "unknown")[:8]
+        md_path = output_dir / f"memo_{state.user_id}_{run_id}.md"
         md_path.write_text(md, encoding="utf-8")
         self.save_pdf(state, output_dir)
         return md_path
