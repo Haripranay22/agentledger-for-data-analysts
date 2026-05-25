@@ -20,7 +20,7 @@ dependencies = [
     "scikit-learn>=1.4",
     "statsmodels>=0.14",
     # AI / Agent
-    "groq>=0.9",
+    "openai>=1.0",
     "langgraph>=0.1",
     "pydantic>=2.6",
     "instructor>=1.2",

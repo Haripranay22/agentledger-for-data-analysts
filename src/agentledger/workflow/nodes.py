@@ -144,21 +144,21 @@ def _build_llm_category_fallback() -> Any:
     """
     Returns a function: Transaction → category_str.
     Used by TransactionCategorizer when ML confidence < 0.70.
-    Calls Groq with a minimal prompt — no Pydantic overhead needed here.
+    Calls OpenAI with a minimal prompt — no Pydantic overhead needed here.
     """
     import os
 
     from agentledger.ml.categorizer import CATEGORIES
 
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        logger.warning("[categorize] GROQ_API_KEY not set — LLM fallback disabled")
+        logger.warning("[categorize] OPENAI_API_KEY not set — LLM fallback disabled")
         return None
 
     try:
-        from groq import Groq
-        groq_client = Groq(api_key=api_key)
-        model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+        from openai import OpenAI
+        openai_client = OpenAI(api_key=api_key)
+        model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
         categories_str = ", ".join(CATEGORIES)
     except ImportError:
         return None
@@ -172,7 +172,7 @@ def _build_llm_category_fallback() -> Any:
             f"Categories: {categories_str}\n\n"
             f"Reply with only the category name, nothing else."
         )
-        response = groq_client.chat.completions.create(
+        response = openai_client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=20,
@@ -196,18 +196,15 @@ def analyze_node(state: WorkflowState, context: dict[str, Any] | None = None) ->
 
 
 def _build_llm_client() -> Any:
-    """Create an Instructor-patched Groq client for structured LLM output."""
+    """Create an Instructor-patched OpenAI client for structured LLM output."""
     import instructor
-    from groq import Groq
+    from openai import OpenAI
 
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        raise RuntimeError("GROQ_API_KEY environment variable not set")
+        raise RuntimeError("OPENAI_API_KEY environment variable not set")
 
-    return instructor.from_groq(
-        Groq(api_key=api_key),
-        mode=instructor.Mode.JSON,
-    )
+    return instructor.from_openai(OpenAI(api_key=api_key))
 
 
 def risk_assess_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
@@ -267,7 +264,7 @@ def risk_assess_node(state: WorkflowState, context: dict[str, Any] | None = None
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        model=os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
         max_retries=2,
     )
     latency_ms = (time.perf_counter() - t0) * 1000
