@@ -178,7 +178,7 @@ def _build_llm_category_fallback() -> Any:
             max_tokens=20,
             temperature=0,
         )
-        raw = response.choices[0].message.content.strip().lower().replace(" ", "_")
+        raw = (response.choices[0].message.content or "").strip().lower().replace(" ", "_")
         return raw if raw in CATEGORIES else "other"
 
     return fallback

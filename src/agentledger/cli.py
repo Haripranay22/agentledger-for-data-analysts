@@ -52,6 +52,8 @@ def _run_analyze(args: argparse.Namespace) -> None:
 
     print(f"[AgentLedger] Analyzing borrower={args.user_id} loan=${args.loan_amount:,.0f}")
 
+    from typing import cast
+
     from agentledger.schemas.models import WorkflowState
     from agentledger.workflow.graph import credit_analysis_graph
 
@@ -62,7 +64,7 @@ def _run_analyze(args: argparse.Namespace) -> None:
     )
 
     try:
-        final_state: WorkflowState = credit_analysis_graph.invoke(initial_state)
+        final_state = cast(WorkflowState, credit_analysis_graph.invoke(initial_state))
     except Exception as exc:
         print(f"[AgentLedger] Pipeline failed: {exc}", file=sys.stderr)
         sys.exit(1)
