@@ -109,10 +109,10 @@ def profile_node(state: WorkflowState, context: dict[str, Any] | None = None) ->
 
 def categorize_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
     """
-    Hybrid ML + LLM categorization.
+    ML categorization (TF-IDF + RandomForest).
+    Low-confidence predictions fall back to "other" — no LLM needed here.
     Reads:  state.raw_transactions (plain Transaction objects from profile_node).
     Writes: state.transactions (CategorizedTransaction objects).
-    ML model handles ~90% of cases; LLM fallback for confidence < 0.70.
     """
     from agentledger.ml.categorizer import TransactionCategorizer
 
@@ -132,56 +132,9 @@ def categorize_node(state: WorkflowState, context: dict[str, Any] | None = None)
         )
 
     categorizer = TransactionCategorizer(model_path=model_path)
-    state.transactions = categorizer.categorize(
-        state.raw_transactions,
-        llm_fallback_fn=_build_llm_category_fallback(),
-    )
+    state.transactions = categorizer.categorize(state.raw_transactions)
     logger.info("[categorize] %d transactions categorized", len(state.transactions))
     return state
-
-
-def _build_llm_category_fallback() -> Any:
-    """
-    Returns a function: Transaction → category_str.
-    Used by TransactionCategorizer when ML confidence < 0.70.
-    Calls OpenAI with a minimal prompt — no Pydantic overhead needed here.
-    """
-    import os
-
-    from agentledger.ml.categorizer import CATEGORIES
-
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        logger.warning("[categorize] OPENAI_API_KEY not set — LLM fallback disabled")
-        return None
-
-    try:
-        from openai import OpenAI
-        openai_client = OpenAI(api_key=api_key)
-        model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-        categories_str = ", ".join(CATEGORIES)
-    except ImportError:
-        return None
-
-    def fallback(txn: Any) -> str:
-        prompt = (
-            f"Classify this bank transaction into exactly one category.\n"
-            f"Merchant: {txn.merchant_name or ''}\n"
-            f"Description: {txn.description}\n"
-            f"Amount: {txn.amount}\n\n"
-            f"Categories: {categories_str}\n\n"
-            f"Reply with only the category name, nothing else."
-        )
-        response = openai_client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=20,
-            temperature=0,
-        )
-        raw = (response.choices[0].message.content or "").strip().lower().replace(" ", "_")
-        return raw if raw in CATEGORIES else "other"
-
-    return fallback
 
 
 def analyze_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
