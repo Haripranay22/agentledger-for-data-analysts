@@ -142,22 +142,20 @@ def analyze_node(state: WorkflowState, context: dict[str, Any] | None = None) ->
     Compute 8 cash-flow metrics deterministically.
     MUST match dbt SQL output before proceeding.
     """
+    from agentledger.analysis.reconcile import assert_metrics_match
+
     logger.info("[analyze] Computing cash flow metrics for user=%s", state.user_id)
     if state.transactions:
         state.metrics = compute_metrics(state.user_id, state.transactions)
+        assert_metrics_match(state.metrics)
     return state
 
 
 def _build_llm_client() -> Any:
-    """Create an Instructor-patched OpenAI client for structured LLM output."""
-    import instructor
-    from openai import OpenAI
+    """Create an instructor-patched OpenAI client; Langfuse-instrumented when configured."""
+    from agentledger.observability.tracer import build_llm_client
 
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY environment variable not set")
-
-    return instructor.from_openai(OpenAI(api_key=api_key))
+    return build_llm_client()
 
 
 def risk_assess_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
@@ -333,16 +331,19 @@ def report_node(state: WorkflowState, context: dict[str, Any] | None = None) -> 
     """Generate Markdown credit memo + audit log."""
     from pathlib import Path
 
+    from agentledger.observability.tracer import flush_traces
     from agentledger.reporting.memo_generator import MemoGenerator
 
     logger.info("[report] Generating credit memo for user=%s", state.user_id)
 
     if state.risk_assessment is None or state.metrics is None:
         logger.warning("[report] Missing assessment or metrics — skipping memo generation")
+        flush_traces()
         return state
 
     output_dir = Path("reports") / state.user_id
     path = MemoGenerator().save(state, output_dir)
     state.final_report_path = str(path)
     logger.info("[report] Memo written: %s", path)
+    flush_traces()
     return state
