@@ -15,7 +15,7 @@ sources:
             description: "Positive = credit (income), negative = debit"
             tests:
               - not_null
-              - accepted_range:
+              - dbt_utils.accepted_range:
                   min_value: -50000
                   max_value: 50000
           - name: transaction_date
@@ -57,6 +57,6 @@ sources:
           - name: confidence_score
             tests:
               - not_null
-              - accepted_range:
+              - dbt_utils.accepted_range:
                   min_value: 0.0
                   max_value: 1.0

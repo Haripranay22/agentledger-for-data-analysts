@@ -1,0 +1,20 @@
+scenario_id: "scn_021_parttime_w2_thin_margin"
+description: "Part-time W-2, $2k/mo income — expenses eat nearly all income, ~$40 surplus"
+borrower:
+  monthly_income: 2000
+  income_source: "W2"
+  rent: 700
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [60, 100]
+  recommendation_any_of: ["decline", "manual_review"]
+  must_include_factors: ["income"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 2000
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 0
+  cash_buffer_days: 1
+  rent_to_income_ratio: 0.35

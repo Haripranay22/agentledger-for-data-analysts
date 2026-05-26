@@ -15,9 +15,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-# Allow imports from src/ when run directly (streamlit run dashboard/app.py)
+# Allow imports from src/ and dashboard/ when run directly (streamlit run dashboard/app.py)
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT))
 
 from dashboard.sample_data import (
     DEMO_STATE,
@@ -164,7 +165,7 @@ with st.sidebar:
     st.divider()
     st.markdown("**Pipeline status**")
     api_keys = {
-        "Groq API": bool(os.environ.get("GROQ_API_KEY")),
+        "OpenAI API": bool(os.environ.get("OPENAI_API_KEY")),
         "Plaid": bool(os.environ.get("PLAID_CLIENT_ID")),
         "Langfuse": bool(os.environ.get("LANGFUSE_PUBLIC_KEY")),
     }
@@ -172,7 +173,7 @@ with st.sidebar:
         icon = "✅" if ok else "⬜"
         st.markdown(f"{icon} {name}")
 
-    if st.button("Run new analysis", use_container_width=True, disabled=not api_keys["Groq API"]):
+    if st.button("Run new analysis", use_container_width=True, disabled=not api_keys["OpenAI API"]):
         st.info("Use the CLI:\n```\nagentledger analyze --user-id USER_001 --loan-amount 15000\n```")
 
 # ── Guard ──────────────────────────────────────────────────────────────────────
@@ -453,7 +454,7 @@ if transactions:
         return "color: #4ade80" if val > 0 else "color: #f87171"
 
     st.dataframe(
-        df.style.applymap(color_amount, subset=["Amount"]).format({"Amount": "${:,.2f}"}),
+        df.style.map(color_amount, subset=["Amount"]).format({"Amount": "${:,.2f}"}),
         use_container_width=True,
         hide_index=True,
         height=320,

@@ -1,0 +1,20 @@
+scenario_id: "scn_025_gig_moderate_affordable_clean"
+description: "Gig worker $5k/mo, low rent ($1200), no NSF — decent buffer despite variability"
+borrower:
+  monthly_income: 5000
+  income_source: "gig"
+  rent: 1200
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [25, 60]
+  recommendation_any_of: ["approve", "approve_with_conditions"]
+  must_include_factors: ["income"]
+  must_not_include: ["nsf", "overdraft", "gambling"]
+metrics:
+  avg_monthly_income: 5000
+  income_cv: 0.27
+  dti_ratio: 0.31
+  nsf_count: 0
+  cash_buffer_days: 13
+  rent_to_income_ratio: 0.24

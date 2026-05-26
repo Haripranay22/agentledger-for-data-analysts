@@ -1,0 +1,20 @@
+scenario_id: "scn_027_w2_low_rent_strong_buffer"
+description: "W-2 $6k/mo, very low rent ($1000) — 23-day buffer, strong approve"
+borrower:
+  monthly_income: 6000
+  income_source: "W2"
+  rent: 1000
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [10, 40]
+  recommendation: "approve"
+  must_include_factors: ["income"]
+  must_not_include: ["nsf", "overdraft", "gambling", "decline"]
+metrics:
+  avg_monthly_income: 6000
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 0
+  cash_buffer_days: 23
+  rent_to_income_ratio: 0.17

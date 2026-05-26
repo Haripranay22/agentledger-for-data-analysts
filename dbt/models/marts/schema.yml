@@ -1,0 +1,75 @@
+version: 2
+
+models:
+  - name: fct_user_metrics
+    description: >
+      8 core cash-flow metrics per borrower, computed deterministically in SQL.
+      MUST reconcile with agentledger/analysis/cash_flow.py — if they differ,
+      something is wrong upstream (categorization or staging).
+      This is the source-of-truth input to the LLM risk assessment layer.
+    columns:
+      - name: user_id
+        description: "Borrower identifier"
+        tests: [unique, not_null]
+      - name: avg_monthly_income
+        description: "Average monthly income across all analyzed months"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: income_cv
+        description: >
+          Coefficient of variation of monthly income (stdev / mean).
+          0 = perfectly stable (W-2), >0.30 = volatile (gig).
+        tests: [not_null]
+      - name: avg_monthly_expenses
+        description: "Average total monthly outflows"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: dti_ratio
+        description: "Debt-to-income ratio: avg debt payments / avg income"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 10
+      - name: total_nsf_events
+        description: "Total count of NSF/overdraft fee transactions across all months"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: discretionary_spending_ratio
+        description: "Non-essential spend / total expenses"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      - name: rent_to_income_ratio
+        description: "Average rent / average income. >0.33 = housing stress."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: cash_buffer_days
+        description: "Days of runway: monthly surplus / daily burn rate"
+        tests: [not_null]
+      - name: months_analyzed
+        description: "Number of calendar months with data"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 24
+      - name: analysis_start
+        description: "Earliest month in the analysis window"
+        tests: [not_null]
+      - name: analysis_end
+        description: "Latest month in the analysis window"
+        tests: [not_null]
+      - name: computed_at
+        description: "Timestamp this row was last recomputed"
+        tests: [not_null]

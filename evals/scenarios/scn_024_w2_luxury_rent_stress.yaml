@@ -1,0 +1,20 @@
+scenario_id: "scn_024_w2_luxury_rent_stress"
+description: "W-2 $7k/mo but luxury rent ($3500) — 50% rent-to-income, only 4 buffer days"
+borrower:
+  monthly_income: 7000
+  income_source: "W2"
+  rent: 3500
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [50, 90]
+  recommendation_any_of: ["manual_review", "decline"]
+  must_include_factors: ["income"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 7000
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 0
+  cash_buffer_days: 4
+  rent_to_income_ratio: 0.50
