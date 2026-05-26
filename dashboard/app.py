@@ -15,9 +15,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-# Allow imports from src/ when run directly (streamlit run dashboard/app.py)
+# Allow imports from src/ and dashboard/ when run directly (streamlit run dashboard/app.py)
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT))
 
 from dashboard.sample_data import (
     DEMO_STATE,
@@ -453,7 +454,7 @@ if transactions:
         return "color: #4ade80" if val > 0 else "color: #f87171"
 
     st.dataframe(
-        df.style.applymap(color_amount, subset=["Amount"]).format({"Amount": "${:,.2f}"}),
+        df.style.map(color_amount, subset=["Amount"]).format({"Amount": "${:,.2f}"}),
         use_container_width=True,
         hide_index=True,
         height=320,
