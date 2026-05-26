@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _clear_tracer_module() -> None:
