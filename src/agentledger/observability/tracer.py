@@ -48,6 +48,8 @@ def build_llm_client() -> Any:
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY environment variable not set")
 
+    base_url = os.environ.get("OPENAI_BASE_URL") or None  # e.g. https://openrouter.ai/api/v1
+
     if _langfuse_configured():
         try:
             from langfuse.openai import OpenAI  # type: ignore[import-untyped]
@@ -57,7 +59,7 @@ def build_llm_client() -> Any:
                 "Langfuse tracing enabled — traces → %s",
                 os.environ.get("LANGFUSE_HOST", "http://localhost:3000"),
             )
-            return instructor.from_openai(OpenAI(api_key=api_key))
+            return instructor.from_openai(OpenAI(api_key=api_key, base_url=base_url))
         except ImportError:
             logger.warning(
                 "LANGFUSE_PUBLIC_KEY is set but langfuse is not installed. "
@@ -69,7 +71,7 @@ def build_llm_client() -> Any:
     from openai import OpenAI
 
     _langfuse_enabled = False
-    return instructor.from_openai(OpenAI(api_key=api_key))
+    return instructor.from_openai(OpenAI(api_key=api_key, base_url=base_url))
 
 
 def flush_traces() -> None:
