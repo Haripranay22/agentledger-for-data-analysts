@@ -164,7 +164,7 @@ with st.sidebar:
     st.divider()
     st.markdown("**Pipeline status**")
     api_keys = {
-        "Groq API": bool(os.environ.get("GROQ_API_KEY")),
+        "OpenAI API": bool(os.environ.get("OPENAI_API_KEY")),
         "Plaid": bool(os.environ.get("PLAID_CLIENT_ID")),
         "Langfuse": bool(os.environ.get("LANGFUSE_PUBLIC_KEY")),
     }
@@ -172,7 +172,7 @@ with st.sidebar:
         icon = "✅" if ok else "⬜"
         st.markdown(f"{icon} {name}")
 
-    if st.button("Run new analysis", use_container_width=True, disabled=not api_keys["Groq API"]):
+    if st.button("Run new analysis", use_container_width=True, disabled=not api_keys["OpenAI API"]):
         st.info("Use the CLI:\n```\nagentledger analyze --user-id USER_001 --loan-amount 15000\n```")
 
 # ── Guard ──────────────────────────────────────────────────────────────────────
