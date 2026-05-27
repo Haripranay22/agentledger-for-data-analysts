@@ -298,7 +298,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </p>
 
 <!-- Decision banner -->
-<div class="decision-banner">
+<div class="decision-banner {{ dec_class }}">
   <div class="decision-label">{{ dec_label }}</div>
   <div class="decision-meta">
     Risk Score: <strong>{{ risk_assessment.risk_score }} / 100</strong><br>
@@ -484,6 +484,7 @@ class MemoGenerator:
         dec_border, dec_bg, dec_label = _DECISION_STYLES.get(
             rec, ("#374151", "#f3f4f6", rec.replace("_", " ").upper())
         )
+        dec_class = f"decision-{rec}"
         score = state.risk_assessment.risk_score if state.risk_assessment else 50
         score_pct = max(2, min(98, score))  # keep needle inside track
 
@@ -496,6 +497,7 @@ class MemoGenerator:
             dec_border=dec_border,
             dec_bg=dec_bg,
             dec_label=dec_label,
+            dec_class=dec_class,
             score_pct=score_pct,
         )
 

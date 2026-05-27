@@ -175,7 +175,7 @@ def test_html_contains_risk_score():
 def test_save_creates_markdown_file():
     state = _make_state()
     with tempfile.TemporaryDirectory() as tmpdir:
-        path = MemoGenerator().save(state, Path(tmpdir))
+        path, _ = MemoGenerator().save(state, Path(tmpdir))
         assert path.exists()
         assert path.suffix == ".md"
         content = path.read_text()
@@ -185,7 +185,7 @@ def test_save_creates_markdown_file():
 def test_save_filename_format():
     state = _make_state()
     with tempfile.TemporaryDirectory() as tmpdir:
-        path = MemoGenerator().save(state, Path(tmpdir))
+        path, _ = MemoGenerator().save(state, Path(tmpdir))
         assert f"memo_USER_TEST_{state.run_id[:8]}" in path.name
 
 
