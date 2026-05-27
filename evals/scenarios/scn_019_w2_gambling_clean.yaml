@@ -1,0 +1,21 @@
+scenario_id: "scn_019_w2_gambling_clean"
+description: "High-income W-2 with gambling — tests whether strong financials offset behavioral flag"
+borrower:
+  monthly_income: 8000
+  income_source: "W2"
+  rent: 2000
+  nsf_count: 0
+  has_gambling: true
+  months_data: 6
+expected:
+  risk_score_range: [25, 65]
+  recommendation_any_of: ["approve", "approve_with_conditions"]
+  must_include_factors: ["income", "gambling"]
+  must_not_include: ["nsf"]
+metrics:
+  avg_monthly_income: 8000
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 0
+  cash_buffer_days: 25
+  rent_to_income_ratio: 0.25

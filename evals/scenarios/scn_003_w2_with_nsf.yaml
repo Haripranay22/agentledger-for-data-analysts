@@ -1,0 +1,21 @@
+scenario_id: "scn_003_w2_with_nsf"
+description: "Stable W-2 employee with one NSF event — otherwise clean profile"
+borrower:
+  monthly_income: 5500
+  income_source: "W2"
+  rent: 1600
+  has_nsf: true
+  months_data: 6
+expected:
+  risk_score_range: [35, 70]
+  # NSF on an otherwise stable profile should trigger caution, not denial
+  recommendation_any_of: ["approve_with_conditions", "approve"]
+  must_include_factors: ["income", "nsf"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 5500
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 1
+  cash_buffer_days: 13
+  rent_to_income_ratio: 0.29

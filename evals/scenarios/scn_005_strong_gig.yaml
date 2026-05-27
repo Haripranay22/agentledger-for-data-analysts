@@ -1,0 +1,21 @@
+scenario_id: "scn_005_strong_gig"
+description: "High-income gig worker — income variability present but strong cash position"
+borrower:
+  monthly_income: 7500
+  income_source: "gig"
+  rent: 1200
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [20, 60]
+  # High income + low rent-to-income ratio should outweigh variability
+  recommendation: "approve"
+  must_include_factors: ["income"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 7500
+  income_cv: 0.27
+  dti_ratio: 0.31
+  nsf_count: 0
+  cash_buffer_days: 23
+  rent_to_income_ratio: 0.16

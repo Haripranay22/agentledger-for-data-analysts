@@ -1,0 +1,21 @@
+scenario_id: "scn_004_high_rent_burden"
+description: "W-2 employee with rent at 60% of income — expenses exceed income, negative cash buffer"
+borrower:
+  monthly_income: 4500
+  income_source: "W2"
+  rent: 2700
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [60, 100]
+  # Negative cash buffer (-1 day) — spending exceeds income monthly
+  recommendation_any_of: ["decline", "approve_with_conditions", "manual_review"]
+  must_include_factors: ["rent", "income"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 4500
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 0
+  cash_buffer_days: -1.0
+  rent_to_income_ratio: 0.60

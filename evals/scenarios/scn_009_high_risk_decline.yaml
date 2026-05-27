@@ -1,0 +1,20 @@
+scenario_id: "scn_009_high_risk_decline"
+description: "Gig worker — multiple NSF events, negative cash buffer, high rent burden"
+borrower:
+  monthly_income: 3000
+  income_source: "gig"
+  rent: 1600
+  nsf_count: 3
+  months_data: 6
+expected:
+  risk_score_range: [65, 100]
+  recommendation_any_of: ["decline", "manual_review", "approve_with_conditions"]
+  must_include_factors: ["income", "nsf"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 3000
+  income_cv: 0.27
+  dti_ratio: 0.31
+  nsf_count: 3
+  cash_buffer_days: -2.3
+  rent_to_income_ratio: 0.53

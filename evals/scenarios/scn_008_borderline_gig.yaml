@@ -1,0 +1,21 @@
+scenario_id: "scn_008_borderline_gig"
+description: "Gig worker with moderate income and moderate rent — genuine edge case"
+borrower:
+  monthly_income: 5000
+  income_source: "gig"
+  rent: 1800
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [30, 70]
+  # Income variability + moderate rent — LLM may go either way
+  recommendation_any_of: ["approve", "approve_with_conditions"]
+  must_include_factors: ["income"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 5000
+  income_cv: 0.27
+  dti_ratio: 0.31
+  nsf_count: 0
+  cash_buffer_days: 7
+  rent_to_income_ratio: 0.36

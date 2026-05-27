@@ -1,0 +1,21 @@
+scenario_id: "scn_006_gig_with_nsf"
+description: "Gig worker with volatile income and one NSF event — two compounding risk factors"
+borrower:
+  monthly_income: 4500
+  income_source: "gig"
+  rent: 1500
+  has_nsf: true
+  months_data: 6
+expected:
+  risk_score_range: [35, 85]
+  # LLM weighs 7.5-day buffer and clean DTI alongside NSF — may approve or add conditions
+  recommendation_any_of: ["approve", "approve_with_conditions", "decline", "manual_review"]
+  must_include_factors: ["income", "nsf"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 4500
+  income_cv: 0.27
+  dti_ratio: 0.31
+  nsf_count: 1
+  cash_buffer_days: 7.5
+  rent_to_income_ratio: 0.33

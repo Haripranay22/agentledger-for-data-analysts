@@ -1,0 +1,20 @@
+scenario_id: "scn_014_high_income_w2"
+description: "High-income W-2 employee — strong approval candidate across all metrics"
+borrower:
+  monthly_income: 10000
+  income_source: "W2"
+  rent: 2000
+  nsf_count: 0
+  months_data: 6
+expected:
+  risk_score_range: [5, 40]
+  recommendation: "approve"
+  must_include_factors: ["income"]
+  must_not_include: ["gambling", "nsf"]
+metrics:
+  avg_monthly_income: 10000
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 0
+  cash_buffer_days: 34
+  rent_to_income_ratio: 0.20

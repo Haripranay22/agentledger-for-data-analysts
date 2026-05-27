@@ -1,0 +1,20 @@
+scenario_id: "scn_015_multiple_nsf"
+description: "W-2 employee with 4 NSF events — pattern of overdrafts despite stable income"
+borrower:
+  monthly_income: 5000
+  income_source: "W2"
+  rent: 1600
+  nsf_count: 4
+  months_data: 6
+expected:
+  risk_score_range: [55, 95]
+  recommendation_any_of: ["decline", "manual_review", "approve_with_conditions"]
+  must_include_factors: ["income", "nsf"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 5000
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 4
+  cash_buffer_days: 12
+  rent_to_income_ratio: 0.32
