@@ -342,8 +342,9 @@ def report_node(state: WorkflowState, context: dict[str, Any] | None = None) -> 
         return state
 
     output_dir = Path("reports") / state.user_id
-    path = MemoGenerator().save(state, output_dir)
-    state.final_report_path = str(path)
-    logger.info("[report] Memo written: %s", path)
+    md_path, pdf_path = MemoGenerator().save(state, output_dir)
+    state.final_report_path = str(md_path)
+    state.final_report_pdf_path = str(pdf_path) if pdf_path else None
+    logger.info("[report] Memo written: %s", md_path)
     flush_traces()
     return state

@@ -21,14 +21,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _get_conn():
+def _get_conn() -> "psycopg2.connection":  # type: ignore[name-defined]
     url = os.environ.get("DATABASE_URL")
     if not url:
         raise RuntimeError("DATABASE_URL not set in .env")
     return psycopg2.connect(url)
 
 
-def save_run(state: "WorkflowState") -> None:
+def save_run(state: WorkflowState) -> None:
     """Persist a completed pipeline run and all related records to Postgres."""
     if not state.run_id:
         logger.warning("[db] No run_id on state — skipping persist")

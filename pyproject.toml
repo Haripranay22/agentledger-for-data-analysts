@@ -67,6 +67,10 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 
+[tool.ruff.lint.per-file-ignores]
+# memo_generator.py embeds large HTML/Jinja2 templates — long lines are unavoidable
+"src/agentledger/reporting/memo_generator.py" = ["E501", "N806"]
+
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true

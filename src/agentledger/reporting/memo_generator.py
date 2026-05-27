@@ -11,6 +11,7 @@ Produces audit-ready memos with:
 
 from __future__ import annotations
 
+from datetime import UTC
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -464,8 +465,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 class MemoGenerator:
     """Generate credit analysis memos as Markdown and PDF."""
 
-    def generate_markdown(self, state: "WorkflowState") -> str:
-        from datetime import datetime, timezone
+    def generate_markdown(self, state: WorkflowState) -> str:
+        from datetime import datetime
+
         from jinja2 import Template
 
         template = Template(MEMO_TEMPLATE)
@@ -473,11 +475,12 @@ class MemoGenerator:
             state=state,
             metrics=state.metrics,
             risk_assessment=state.risk_assessment,
-            generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
         )
 
-    def generate_html(self, state: "WorkflowState") -> str:
-        from datetime import datetime, timezone
+    def generate_html(self, state: WorkflowState) -> str:
+        from datetime import datetime
+
         from jinja2 import Template
 
         rec = state.risk_assessment.recommendation if state.risk_assessment else "manual_review"
@@ -493,7 +496,7 @@ class MemoGenerator:
             state=state,
             metrics=state.metrics,
             risk_assessment=state.risk_assessment,
-            generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
             dec_border=dec_border,
             dec_bg=dec_bg,
             dec_label=dec_label,
@@ -501,13 +504,13 @@ class MemoGenerator:
             score_pct=score_pct,
         )
 
-    def save(self, state: "WorkflowState", output_dir: Path) -> tuple[Path, Path | None]:
+    def save(self, state: WorkflowState, output_dir: Path) -> tuple[Path, Path | None]:
         """
         Save memo as .md and .pdf.
         Returns (md_path, pdf_path). pdf_path is None if WeasyPrint is unavailable.
         """
         output_dir.mkdir(parents=True, exist_ok=True)
-        stem = f"memo_{state.user_id}_{state.run_id[:8]}"
+        stem = f"memo_{state.user_id}_{(state.run_id or 'no-run-id')[:8]}"
 
         md_path = output_dir / f"{stem}.md"
         md_path.write_text(self.generate_markdown(state), encoding="utf-8")
@@ -515,28 +518,32 @@ class MemoGenerator:
         pdf_path = self._save_pdf(state, output_dir / f"{stem}.pdf")
         return md_path, pdf_path
 
-    def _save_pdf(self, state: "WorkflowState", pdf_path: Path) -> Path | None:
+    def _save_pdf(self, state: WorkflowState, pdf_path: Path) -> Path | None:
         try:
             from reportlab.lib import colors
-            from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+            from reportlab.lib.enums import TA_CENTER, TA_RIGHT
             from reportlab.lib.pagesizes import A4
             from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
             from reportlab.lib.units import mm
             from reportlab.platypus import (
-                HRFlowable, Paragraph, SimpleDocTemplate,
-                Spacer, Table, TableStyle,
+                HRFlowable,
+                Paragraph,
+                SimpleDocTemplate,
+                Spacer,
+                Table,
+                TableStyle,
             )
         except ImportError:
             return None
 
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         ra = state.risk_assessment
         m = state.metrics
         if ra is None or m is None:
             return None
 
-        generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        generated_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
         # ── Color palette ───────────────────────────────────────────────────────
         _DEC_FG = {
@@ -576,7 +583,7 @@ class MemoGenerator:
         # ── Styles ──────────────────────────────────────────────────────────────
         base = getSampleStyleSheet()
 
-        def sty(name, parent="Normal", **kw):
+        def sty(name, parent="Normal", **kw):  # type: ignore[no-untyped-def]
             return ParagraphStyle(name, parent=base[parent], **kw)
 
         S = {
@@ -608,7 +615,7 @@ class MemoGenerator:
         W = A4[0] - 40*mm   # usable width
         story = []
 
-        def hr(thickness=1, color=BORDER):
+        def hr(thickness=1, color=BORDER):  # type: ignore[no-untyped-def]
             return HRFlowable(width="100%", thickness=thickness, color=color, spaceAfter=6)
 
         # ── Header ──────────────────────────────────────────────────────────────
@@ -679,7 +686,7 @@ class MemoGenerator:
         story.append(Paragraph("Cash Flow Analysis", S["h2"]))
         story.append(hr())
 
-        def _flag(val, ok_thr, warn_thr, ok="✓ Good", warn="⚠ Elevated", bad="✗ High", invert=False):
+        def _flag(val, ok_thr, warn_thr, ok="✓ Good", warn="⚠ Elevated", bad="✗ High", invert=False):  # type: ignore[no-untyped-def]
             if invert:
                 color = _SEV_FG["low"] if val > ok_thr else (_SEV_FG["medium"] if val > warn_thr else _SEV_FG["high"])
                 label = ok if val > ok_thr else (warn if val > warn_thr else bad)
@@ -706,7 +713,7 @@ class MemoGenerator:
             ["Discretionary Spending",    f"{m.discretionary_spending_ratio:.1%}",   "—"],
         ]
 
-        def _cell(v):
+        def _cell(v):  # type: ignore[no-untyped-def]
             return v if isinstance(v, Paragraph) else Paragraph(str(v), sty("mc", fontSize=9))
 
         metrics_rows = [[_cell(c) for c in row] for row in metrics_data]
@@ -745,7 +752,7 @@ class MemoGenerator:
         # ── Risk factors + Strengths ────────────────────────────────────────────
         # Each factor is a single flat Table row: [badge | description + citations]
         # Avoids nested flowables-in-cells which causes reportlab LayoutError.
-        def _append_factors(factors, is_strength=False):
+        def _append_factors(factors, is_strength=False):  # type: ignore[no-untyped-def]
             for f in factors:
                 fg = BLUE if is_strength else _SEV_FG.get(f.severity, MUTED)
                 label = "STRENGTH" if is_strength else f.severity.upper()
