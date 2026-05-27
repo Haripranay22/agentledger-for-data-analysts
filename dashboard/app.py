@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -121,6 +122,123 @@ def risk_color(score: int) -> str:
     return "#f87171"
 
 
+# ── Live-pipeline helpers ──────────────────────────────────────────────────────
+
+_MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+
+
+def _iso_to_month_label(iso_month: str) -> str:
+    try:
+        y, m = iso_month.split("-")
+        return f"{_MONTH_LABELS[int(m) - 1]} {y}"
+    except (ValueError, IndexError):
+        return iso_month
+
+
+def _pipeline_result_to_dict(result: Any) -> dict[str, Any]:
+    """Serialize pipeline output (Pydantic model or LangGraph dict) to plain dict."""
+    if hasattr(result, "model_dump"):
+        return result.model_dump(mode="json")
+    if isinstance(result, dict):
+        out: dict[str, Any] = {}
+        for key, val in result.items():
+            if hasattr(val, "model_dump"):
+                out[key] = val.model_dump(mode="json")
+            elif isinstance(val, list):
+                out[key] = [
+                    v.model_dump(mode="json") if hasattr(v, "model_dump") else v
+                    for v in val
+                ]
+            else:
+                out[key] = val
+        return out
+    return {}
+
+
+def _extract_transactions(result: Any) -> list[dict[str, Any]]:
+    """Convert CategorizedTransaction objects to the format the dashboard expects."""
+    raw = result.transactions if hasattr(result, "transactions") else result.get("transactions", [])
+    out = []
+    for t in raw:
+        if hasattr(t, "transaction_id"):
+            out.append({
+                "id": t.transaction_id,
+                "date": t.transaction_date.isoformat() if hasattr(t.transaction_date, "isoformat") else str(t.transaction_date),
+                "merchant": t.merchant_name or t.description,
+                "category": t.our_category,
+                "amount": t.amount,
+                "is_income": t.is_income,
+                "is_recurring": t.is_recurring,
+            })
+        elif isinstance(t, dict):
+            out.append({
+                "id": t.get("transaction_id", ""),
+                "date": str(t.get("transaction_date", "")),
+                "merchant": t.get("merchant_name") or t.get("description", ""),
+                "category": t.get("our_category", ""),
+                "amount": t.get("amount", 0.0),
+                "is_income": t.get("is_income", False),
+                "is_recurring": t.get("is_recurring", False),
+            })
+    return out
+
+
+def _compute_income_series(transactions: list[dict[str, Any]]) -> tuple[list[str], list[float]]:
+    """Compute monthly income series from real transactions for the trend chart."""
+    monthly: dict[str, float] = defaultdict(float)
+    for t in transactions:
+        if t.get("is_income") and t.get("amount", 0) > 0:
+            date_str = str(t.get("date", ""))[:7]  # "YYYY-MM"
+            if len(date_str) == 7:
+                monthly[date_str] += t["amount"]
+    months_iso = sorted(monthly.keys())
+    return [_iso_to_month_label(m) for m in months_iso], [monthly[m] for m in months_iso]
+
+
+def _compute_expense_breakdown(transactions: list[dict[str, Any]]) -> dict[str, float]:
+    """Compute per-category expense totals (top 8) from real transactions."""
+    totals: dict[str, float] = defaultdict(float)
+    for t in transactions:
+        if not t.get("is_income") and t.get("amount", 0) < 0:
+            cat = t.get("category") or "other"
+            totals[cat] += abs(t["amount"])
+    return dict(sorted(totals.items(), key=lambda x: x[1], reverse=True)[:8])
+
+
+def run_pipeline(
+    user_id: str,
+    loan_amount: float,
+    loan_purpose: str | None,
+    access_token: str | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Invoke the full LangGraph pipeline. Returns (state_dict, transactions)."""
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    prev_token: str | None = None
+    if access_token:
+        prev_token = os.environ.get("PLAID_ACCESS_TOKEN")
+        os.environ["PLAID_ACCESS_TOKEN"] = access_token
+
+    try:
+        from agentledger.schemas.models import WorkflowState
+        from agentledger.workflow.graph import credit_analysis_graph
+
+        initial = WorkflowState(
+            user_id=user_id,
+            loan_amount=loan_amount,
+            loan_purpose=loan_purpose or None,
+        )
+        result = credit_analysis_graph.invoke(initial)
+        return _pipeline_result_to_dict(result), _extract_transactions(result)
+    finally:
+        if access_token:
+            if prev_token is None:
+                os.environ.pop("PLAID_ACCESS_TOKEN", None)
+            else:
+                os.environ["PLAID_ACCESS_TOKEN"] = prev_token
+
+
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 
 with st.sidebar:
@@ -130,7 +248,7 @@ with st.sidebar:
 
     data_source = st.radio(
         "Data source",
-        ["Demo borrower (no API needed)", "Load saved analysis"],
+        ["Demo borrower (no API needed)", "Load saved analysis", "Run live analysis"],
         index=0,
     )
 
@@ -142,7 +260,7 @@ with st.sidebar:
         transactions = DEMO_TRANSACTIONS
         st.info("Showing sample borrower: USER_001 — Stable W-2 employee")
 
-    else:
+    elif data_source == "Load saved analysis":
         saved = load_saved_analyses()
         if saved:
             chosen = st.selectbox(
@@ -162,19 +280,78 @@ with st.sidebar:
             )
             st.stop()
 
+    else:  # Run live analysis
+        has_llm = bool(os.environ.get("OPENAI_API_KEY"))
+        has_plaid_creds = bool(
+            os.environ.get("PLAID_CLIENT_ID") and os.environ.get("PLAID_SECRET")
+        )
+        has_plaid_token = bool(os.environ.get("PLAID_ACCESS_TOKEN"))
+
+        for label, ok in [("LLM API key", has_llm), ("Plaid credentials", has_plaid_creds)]:
+            st.markdown(f"{'✅' if ok else '❌'} {label}")
+
+        with st.form("live_analysis_form"):
+            user_id_input = st.text_input("User ID", value="USER_001")
+            loan_amount_input = st.number_input(
+                "Loan Amount ($)",
+                min_value=500.0,
+                max_value=2_000_000.0,
+                value=25_000.0,
+                step=1_000.0,
+            )
+            loan_purpose_input = st.text_input(
+                "Loan Purpose (optional)", value="Debt consolidation"
+            )
+            plaid_token_input = (
+                st.text_input(
+                    "Plaid Access Token",
+                    type="password",
+                    help="PLAID_ACCESS_TOKEN not found in environment",
+                )
+                if not has_plaid_token
+                else ""
+            )
+            can_run = has_llm and has_plaid_creds
+            submitted = st.form_submit_button(
+                "▶  Run Analysis", disabled=not can_run, use_container_width=True,
+            )
+            if not can_run:
+                st.caption("Set OPENAI_API_KEY and Plaid credentials in .env to enable")
+
+        if submitted:
+            token = plaid_token_input.strip() if not has_plaid_token else None
+            with st.spinner("Running pipeline… this may take 30–60 s"):
+                try:
+                    result_state, result_txns = run_pipeline(
+                        user_id=user_id_input.strip(),
+                        loan_amount=float(loan_amount_input),
+                        loan_purpose=loan_purpose_input.strip() or None,
+                        access_token=token or None,
+                    )
+                    st.session_state["live_result"] = (result_state, result_txns)
+                except Exception as exc:
+                    st.error(f"Pipeline error: {exc}")
+                    st.stop()
+
+        if "live_result" not in st.session_state:
+            st.info("Fill in the form above and click **▶  Run Analysis**.")
+            st.stop()
+
+        state, transactions = st.session_state["live_result"]
+        st.success(
+            f"Analysis ready — Run ID: `{str(state.get('run_id') or '')[:12]}`"
+        )
+
     st.divider()
     st.markdown("**Pipeline status**")
     api_keys = {
-        "OpenAI API": bool(os.environ.get("OPENAI_API_KEY")),
+        "LLM API": bool(os.environ.get("OPENAI_API_KEY")),
         "Plaid": bool(os.environ.get("PLAID_CLIENT_ID")),
         "Langfuse": bool(os.environ.get("LANGFUSE_PUBLIC_KEY")),
     }
     for name, ok in api_keys.items():
         icon = "✅" if ok else "⬜"
         st.markdown(f"{icon} {name}")
-
-    if st.button("Run new analysis", use_container_width=True, disabled=not api_keys["OpenAI API"]):
-        st.info("Use the CLI:\n```\nagentledger analyze --user-id USER_001 --loan-amount 15000\n```")
 
 # ── Guard ──────────────────────────────────────────────────────────────────────
 
@@ -304,7 +481,12 @@ col_trend, col_exp = st.columns(2)
 
 with col_trend:
     st.markdown("#### Monthly Income Trend")
-    months, income_vals = get_monthly_income_series()
+    if transactions and data_source == "Run live analysis":
+        months, income_vals = _compute_income_series(transactions)
+        if not months:
+            months, income_vals = get_monthly_income_series()
+    else:
+        months, income_vals = get_monthly_income_series()
     avg = metrics.get("avg_monthly_income", 0)
 
     fig_income = go.Figure()
@@ -336,7 +518,12 @@ with col_trend:
 
 with col_exp:
     st.markdown("#### Expense Breakdown")
-    breakdown = get_expense_breakdown()
+    if transactions and data_source == "Run live analysis":
+        breakdown = _compute_expense_breakdown(transactions)
+        if not breakdown:
+            breakdown = get_expense_breakdown()
+    else:
+        breakdown = get_expense_breakdown()
     labels = list(breakdown.keys())
     values = list(breakdown.values())
 
