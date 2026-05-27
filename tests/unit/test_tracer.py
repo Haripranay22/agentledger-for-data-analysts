@@ -95,7 +95,7 @@ def test_build_llm_client_langfuse_enabled(monkeypatch: pytest.MonkeyPatch) -> N
         from agentledger.observability.tracer import build_llm_client
         client = build_llm_client()
 
-    mock_langfuse_openai_mod.OpenAI.assert_called_once_with(api_key="sk-test")
+    mock_langfuse_openai_mod.OpenAI.assert_called_once_with(api_key="sk-test", base_url=None)
     mock_instructor.from_openai.assert_called_once()
     assert client is not None
 

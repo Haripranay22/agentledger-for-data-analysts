@@ -48,7 +48,7 @@ def build_llm_client() -> Any:
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY environment variable not set")
 
-    base_url = os.environ.get("OPENAI_BASE_URL") or None  # e.g. https://openrouter.ai/api/v1
+    base_url = os.environ.get("OPENAI_BASE_URL") or None
 
     if _langfuse_configured():
         try:
