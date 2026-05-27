@@ -38,7 +38,7 @@ def _run_analyze(args: argparse.Namespace) -> None:
 
     if final_state.metrics:
         m = final_state.metrics
-        print(f"\nMETRICS:")
+        print("\nMETRICS:")
         print(f"  Avg monthly income:   ${m.avg_monthly_income:>10,.2f}")
         print(f"  Avg monthly expenses: ${m.avg_monthly_expenses:>10,.2f}")
         print(f"  DTI ratio:            {m.dti_ratio:>10.1%}")
@@ -49,7 +49,7 @@ def _run_analyze(args: argparse.Namespace) -> None:
 
     if final_state.risk_assessment:
         ra = final_state.risk_assessment
-        print(f"\nRISK ASSESSMENT:")
+        print("\nRISK ASSESSMENT:")
         print(f"  Score:          {ra.risk_score}/100")
         print(f"  Recommendation: {ra.recommendation.upper()}")
         print(f"  Confidence:     {ra.confidence:.0%}")
@@ -57,12 +57,12 @@ def _run_analyze(args: argparse.Namespace) -> None:
 
     if final_state.validation_result:
         vr = final_state.validation_result
-        print(f"\nVALIDATION:")
+        print("\nVALIDATION:")
         print(f"  Citation validity:  {vr.overall_validity:.0%}")
         print(f"  Hallucinated claims: {len(vr.hallucinated_claims)}")
 
     if final_state.escalate_to_human:
-        print(f"\nESCALATED TO HUMAN REVIEW:")
+        print("\nESCALATED TO HUMAN REVIEW:")
         for reason in (final_state.escalation_reasons or []):
             print(f"  • {reason}")
 
