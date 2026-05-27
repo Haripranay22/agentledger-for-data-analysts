@@ -109,10 +109,10 @@ def profile_node(state: WorkflowState, context: dict[str, Any] | None = None) ->
 
 def categorize_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
     """
-    Hybrid ML + LLM categorization.
+    ML categorization (TF-IDF + RandomForest).
+    Low-confidence predictions fall back to "other" — no LLM needed here.
     Reads:  state.raw_transactions (plain Transaction objects from profile_node).
     Writes: state.transactions (CategorizedTransaction objects).
-    ML model handles ~90% of cases; LLM fallback for confidence < 0.70.
     """
     from agentledger.ml.categorizer import TransactionCategorizer
 
@@ -132,53 +132,9 @@ def categorize_node(state: WorkflowState, context: dict[str, Any] | None = None)
         )
 
     categorizer = TransactionCategorizer(model_path=model_path)
-    state.transactions = categorizer.categorize(
-        state.raw_transactions,
-        llm_fallback_fn=_build_llm_category_fallback(),
-    )
+    state.transactions = categorizer.categorize(state.raw_transactions)
     logger.info("[categorize] %d transactions categorized", len(state.transactions))
     return state
-
-
-def _build_llm_category_fallback():
-    """
-    Returns a function: Transaction → category_str.
-    Used by TransactionCategorizer when ML confidence < 0.70.
-    Uses local Ollama — tight loop, minimal tokens.
-    """
-    import os
-    from agentledger.ml.categorizer import CATEGORIES
-
-    try:
-        from openai import OpenAI
-        or_client = OpenAI(
-            api_key="ollama",
-            base_url=os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
-        )
-        model = os.environ.get("OLLAMA_MODEL", "llama3:latest")
-        categories_str = ", ".join(CATEGORIES)
-    except ImportError:
-        return None
-
-    def fallback(txn) -> str:
-        prompt = (
-            f"Classify this bank transaction into exactly one category.\n"
-            f"Merchant: {txn.merchant_name or ''}\n"
-            f"Description: {txn.description}\n"
-            f"Amount: {txn.amount}\n\n"
-            f"Categories: {categories_str}\n\n"
-            f"Reply with only the category name, nothing else."
-        )
-        response = or_client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=20,
-            temperature=0,
-        )
-        raw = response.choices[0].message.content.strip().lower().replace(" ", "_")
-        return raw if raw in CATEGORIES else "other"
-
-    return fallback
 
 
 def analyze_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
@@ -186,63 +142,35 @@ def analyze_node(state: WorkflowState, context: dict[str, Any] | None = None) ->
     Compute 8 cash-flow metrics deterministically.
     MUST match dbt SQL output before proceeding.
     """
+    from agentledger.analysis.reconcile import assert_metrics_match
+
     logger.info("[analyze] Computing cash flow metrics for user=%s", state.user_id)
     if state.transactions:
         state.metrics = compute_metrics(state.user_id, state.transactions)
+        assert_metrics_match(state.metrics)
     return state
 
 
 def _build_llm_client() -> Any:
-    """Create an Instructor-patched client using OpenRouter."""
-    import instructor
-    from openai import OpenAI
+    """Create an instructor-patched OpenAI client; Langfuse-instrumented when configured."""
+    from agentledger.observability.tracer import build_llm_client
 
-    return instructor.from_openai(
-        OpenAI(
-            api_key=os.environ["OPENROUTER_API_KEY"],
-            base_url="https://openrouter.ai/api/v1",
-        ),
-        mode=instructor.Mode.JSON,
-    )
+    return build_llm_client()
 
 
-def _sample_transactions_for_llm(transactions: list, max_total: int = 80) -> list[dict]:
+def risk_assess_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
     """
-    Return a token-efficient, high-signal subset of transactions for the LLM prompt.
-
-    Priority order (all kept first, remainder sampled):
-      1. All income transactions — LLM must cite income stability
-      2. All NSF / overdraft events — highest risk signal
-      3. All recurring payments (rent, debt, subscriptions)
-      4. Up to 3 per remaining category, sorted by absolute amount (largest first)
-
-    Caps at max_total to keep prompt under ~8K tokens regardless of history length.
+    LLM risk analysis (Gemini).
+    Receives pre-computed metrics — never asked to do math.
+    Forces citations: every claim must reference transaction_ids.
     """
-    HIGH_PRIORITY = {"income_salary", "income_freelance", "income_government", "income_other", "nsf_fee"}
-    RECURRING = {"rent_mortgage", "utilities", "subscription", "debt_payment"}
+    logger.info("[risk_assess] Running LLM risk analysis | retry=%d", state.retry_count)
 
-    high, recurring, other = [], [], []
-    for t in transactions:
-        cat = t.our_category
-        if cat in HIGH_PRIORITY or t.is_income:
-            high.append(t)
-        elif cat in RECURRING or t.is_recurring:
-            recurring.append(t)
-        else:
-            other.append(t)
+    if state.metrics is None:
+        raise RuntimeError("metrics must be computed before risk_assess_node")
 
-    # Sample other categories: top 3 by absolute amount per category
-    from collections import defaultdict
-    by_cat: dict[str, list] = defaultdict(list)
-    for t in other:
-        by_cat[t.our_category].append(t)
-    sampled_other = []
-    for txns in by_cat.values():
-        sampled_other.extend(sorted(txns, key=lambda t: abs(t.amount), reverse=True)[:3])
-
-    selected = (high + recurring + sampled_other)[:max_total]
-
-    return [
+    # Slim transaction records — only fields the analyst needs to cite
+    txn_records = [
         {
             "transaction_id": t.transaction_id,
             "date": t.transaction_date.isoformat(),
@@ -252,27 +180,8 @@ def _sample_transactions_for_llm(transactions: list, max_total: int = 80) -> lis
             "is_income": t.is_income,
             "is_recurring": t.is_recurring,
         }
-        for t in selected
+        for t in state.transactions
     ]
-
-
-def risk_assess_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
-    """
-    LLM risk analysis (OpenRouter).
-    Receives pre-computed metrics — never asked to do math.
-    Forces citations: every claim must reference transaction_ids.
-    """
-    logger.info("[risk_assess] Running LLM risk analysis | retry=%d", state.retry_count)
-
-    if state.metrics is None:
-        raise RuntimeError("metrics must be computed before risk_assess_node")
-
-    # Smart sample: high-signal transactions only — keeps prompt under ~8K tokens
-    txn_records = _sample_transactions_for_llm(state.transactions, max_total=80)
-    logger.info(
-        "[risk_assess] Sending %d / %d transactions to LLM (sampled)",
-        len(txn_records), len(state.transactions),
-    )
 
     validator_feedback = ""
     if state.validation_result and state.validation_result.feedback_for_risk_analyst:
@@ -298,32 +207,17 @@ def risk_assess_node(state: WorkflowState, context: dict[str, Any] | None = None
         validator_feedback=validator_feedback,
     )
 
-    from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
-
-    def _is_rate_limit(exc: BaseException) -> bool:
-        msg = str(exc).lower()
-        return "429" in msg or "rate_limit" in msg or "rate limit" in msg
-
-    @retry(
-        retry=retry_if_exception(_is_rate_limit),
-        wait=wait_exponential(multiplier=1, min=10, max=60),
-        stop=stop_after_attempt(4),
-        reraise=True,
-    )
-    def _call_llm() -> RiskAssessment:
-        return _build_llm_client().chat.completions.create(
-            response_model=RiskAssessment,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            model=os.environ.get("OPENROUTER_MODEL", "openai/gpt-oss-120b:free"),
-            max_tokens=1500,
-            max_retries=2,
-        )
-
+    client = _build_llm_client()
     t0 = time.perf_counter()
-    risk_assessment: RiskAssessment = _call_llm()
+    risk_assessment: RiskAssessment = client.chat.completions.create(
+        response_model=RiskAssessment,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+        max_retries=2,
+    )
     latency_ms = (time.perf_counter() - t0) * 1000
 
     state.risk_assessment = risk_assessment
@@ -437,21 +331,19 @@ def report_node(state: WorkflowState, context: dict[str, Any] | None = None) -> 
     """Generate Markdown credit memo + audit log."""
     from pathlib import Path
 
+    from agentledger.observability.tracer import flush_traces
     from agentledger.reporting.memo_generator import MemoGenerator
 
     logger.info("[report] Generating credit memo for user=%s", state.user_id)
 
     if state.risk_assessment is None or state.metrics is None:
         logger.warning("[report] Missing assessment or metrics — skipping memo generation")
+        flush_traces()
         return state
 
     output_dir = Path("reports") / state.user_id
-    md_path, pdf_path = MemoGenerator().save(state, output_dir)
-    state.final_report_path = str(md_path)
-    state.final_report_pdf_path = str(pdf_path) if pdf_path else None
-    logger.info("[report] Memo written: %s | PDF: %s", md_path, pdf_path or "unavailable")
-
-    from agentledger.db import save_run
-    save_run(state)
-
+    path = MemoGenerator().save(state, output_dir)
+    state.final_report_path = str(path)
+    logger.info("[report] Memo written: %s", path)
+    flush_traces()
     return state
