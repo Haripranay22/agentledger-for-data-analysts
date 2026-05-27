@@ -212,8 +212,20 @@ def run_pipeline(
     access_token: str | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Invoke the full LangGraph pipeline. Returns (state_dict, transactions)."""
-    from dotenv import load_dotenv
-    load_dotenv(dotenv_path=ROOT / ".env", override=True)
+    from dotenv import dotenv_values
+
+    # Load .env explicitly and apply every key, including clearing vars that
+    # are present in the shell but absent from .env (e.g. a stale OPENAI_BASE_URL
+    # left over from a Groq session would otherwise silently mis-route requests).
+    env_file = ROOT / ".env"
+    if env_file.exists():
+        dotenv_env = dotenv_values(env_file)
+        for k, v in dotenv_env.items():
+            os.environ[k] = v or ""
+        # Remove any LLM routing vars not declared in .env
+        for var in ("OPENAI_BASE_URL",):
+            if var not in dotenv_env:
+                os.environ.pop(var, None)
 
     prev_token: str | None = None
     if access_token:
