@@ -152,10 +152,16 @@ class TransactionCategorizer:
             source: Literal["ml_model", "llm_fallback", "rule_based"] = "ml_model"
 
             if confidence < CONFIDENCE_THRESHOLD and llm_fallback_fn is not None:
-                category = llm_fallback_fn(txn)
-                confidence = 1.0  # LLM classified, trust it
-                source = "llm_fallback"
-                logger.debug("LLM fallback used for tx=%s", txn.transaction_id)
+                try:
+                    category = llm_fallback_fn(txn)
+                    confidence = 1.0
+                    source = "llm_fallback"
+                    logger.debug("LLM fallback used for tx=%s", txn.transaction_id)
+                except Exception as exc:
+                    logger.warning(
+                        "[categorize] LLM fallback failed for tx=%s (%s) — using ML result",
+                        txn.transaction_id, exc,
+                    )
 
             categorized.append(CategorizedTransaction(
                 **txn.model_dump(),

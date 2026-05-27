@@ -126,4 +126,5 @@ class WorkflowState(BaseModel):
     escalation_reasons: list[str] = Field(default_factory=list)
     retry_count: int = 0
     final_report_path: str | None = None
+    final_report_pdf_path: str | None = None
     run_id: str | None = None
