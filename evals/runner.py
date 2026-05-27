@@ -20,10 +20,11 @@ Run:
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import uuid
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import yaml  # type: ignore[import-untyped]
@@ -31,6 +32,7 @@ import yaml  # type: ignore[import-untyped]
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from agentledger.analysis.cash_flow import compute_metrics
@@ -45,6 +47,7 @@ from agentledger.workflow.nodes import (
     risk_assess_node,
     validate_node,
 )
+from evals.regression_store import RegressionStore
 
 METRICS_TOLERANCE = 0.20   # ±20% — allows for rounding in synthetic data
 VALIDITY_THRESHOLD = 0.85  # citation validity must be ≥ this to pass
@@ -329,9 +332,51 @@ def run_scenario(scenario: dict) -> dict:
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
+def _print_regression_report(diff: dict) -> None:
+    """Print a human-readable regression diff to stdout."""
+    prev_ts = diff["previous_timestamp"][:19].replace("T", " ")
+    regressions = diff["regressions"]
+    improvements = diff["improvements"]
+    new_scen = diff["new_scenarios"]
+    unchanged_fail = diff["unchanged_fail"]
+
+    print(f"\n{'='*60}")
+    print(f"REGRESSION REPORT  vs  {prev_ts} UTC")
+    print(f"  previous: {diff['previous_passed']}/{diff['previous_total']} passed")
+    print(f"{'='*60}")
+
+    if regressions:
+        print(f"\n  ⛔  REGRESSIONS ({len(regressions)}) — were passing, now failing:")
+        for r in regressions:
+            print(f"    {r['scenario_id']}")
+            for fail in r.get("failures", []):
+                print(f"      → {fail}")
+    else:
+        print("\n  ✅  No regressions")
+
+    if improvements:
+        print(f"\n  🎉  IMPROVEMENTS ({len(improvements)}) — were failing, now passing:")
+        for r in improvements:
+            print(f"    {r['scenario_id']}")
+
+    if unchanged_fail:
+        print(f"\n  ⚠️   STILL FAILING ({len(unchanged_fail)}):")
+        for r in unchanged_fail:
+            print(f"    {r['scenario_id']}")
+
+    if new_scen:
+        print(f"\n  🆕  NEW SCENARIOS ({len(new_scen)}):")
+        for r in new_scen:
+            status = "PASS" if r["passed"] else "FAIL"
+            print(f"    {r['scenario_id']} — {status}")
+
+    print(f"{'='*60}")
+
+
 def main(
     scenario_dir: str = "evals/scenarios",
     output: str = "evals/reports/latest.json",
+    skip_regression: bool = False,
 ) -> None:
     scenarios = []
     for path in sorted(Path(scenario_dir).glob("*.yaml")):
@@ -342,6 +387,7 @@ def main(
     print(f"AgentLedger Eval Harness — {len(scenarios)} scenarios")
     print(f"{'='*60}")
 
+    wall_start = time.perf_counter()
     results = []
     for s in scenarios:
         try:
@@ -349,10 +395,11 @@ def main(
         except Exception as exc:
             msg = str(exc)
             if "rate_limit" in msg.lower() or "429" in msg or "RateLimitError" in type(exc).__name__:
-                print(f"\n  [rate limit] Gemini quota reached after {len(results)} scenarios.")
-                print(f"  Partial results saved. Re-run after quota window resets.")
+                print(f"\n  [rate limit] quota reached after {len(results)} scenarios.")
+                print("  Partial results saved. Re-run after quota window resets.")
                 break
             raise
+    total_duration = time.perf_counter() - wall_start
 
     # ── Summary table ──────────────────────────────────────────────────────
     passed = sum(1 for r in results if r["passed"])
@@ -371,10 +418,25 @@ def main(
             f"{str(r['risk_score']):<8} {str(r['recommendation']):<28} {v}"
         )
 
+    # ── Persist to regression store ────────────────────────────────────────
+    model = os.environ.get("OPENAI_MODEL", "unknown")
+    store = RegressionStore()
+    run_id = store.save_run(results, model=model, duration_s=total_duration)
+    print(f"\nRun saved to history  run_id={run_id[:12]}  model={model}")
+
+    # ── Regression diff ────────────────────────────────────────────────────
+    if not skip_regression:
+        diff = store.compare_to_previous(run_id)
+        if diff is not None:
+            _print_regression_report(diff)
+        else:
+            print("  (No previous run to compare against — baseline established)")
+
+    # ── Save latest.json ───────────────────────────────────────────────────
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     with open(output, "w") as f:
         json.dump(results, f, indent=2, default=str)
-    print(f"\nFull results saved to: {output}")
+    print(f"\nFull results → {output}")
 
 
 if __name__ == "__main__":

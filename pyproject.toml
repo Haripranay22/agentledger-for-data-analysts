@@ -70,6 +70,10 @@ select = ["E", "F", "I", "N", "W", "UP"]
 [tool.ruff.lint.per-file-ignores]
 # memo_generator.py embeds large HTML/Jinja2 templates — long lines are unavoidable
 "src/agentledger/reporting/memo_generator.py" = ["E501", "N806"]
+# evals/ scripts use sys.path manipulation before imports; transaction fixtures have long lines
+"evals/*.py" = ["E402", "E501"]
+# test fixtures have long lines for readability
+"tests/unit/test_regression_store.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"

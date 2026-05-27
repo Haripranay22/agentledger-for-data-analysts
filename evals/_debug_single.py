@@ -1,12 +1,19 @@
 """Quick debug: run scn_001 through the full eval pipeline to expose the real error."""
-import sys, traceback, uuid, yaml
+import sys
+import traceback
+
+import yaml
+
 sys.path.insert(0, "src")
 sys.path.insert(0, ".")
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # runner.py lives in evals/ — import by path
-import importlib.util, pathlib
+import importlib.util
+import pathlib
+
 spec = importlib.util.spec_from_file_location("runner", pathlib.Path("evals/runner.py"))
 runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)

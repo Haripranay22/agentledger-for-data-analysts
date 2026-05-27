@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _get_conn() -> "psycopg2.connection":  # type: ignore[name-defined]
+def _get_conn() -> psycopg2.connection:  # type: ignore[name-defined]
     url = os.environ.get("DATABASE_URL")
     if not url:
         raise RuntimeError("DATABASE_URL not set in .env")

@@ -73,14 +73,45 @@ def _run_analyze(args: argparse.Namespace) -> None:
 
 
 def _run_eval(args: argparse.Namespace) -> None:
-    # Resolve scenario dir relative to cwd so the CLI works from any location
     scenario_dir = str(Path(args.scenario_dir).resolve())
     output = str(Path(args.output).resolve())
 
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "evals"))
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
     from evals.runner import main as eval_main  # type: ignore[import]
 
-    eval_main(scenario_dir=scenario_dir, output=output)
+    eval_main(
+        scenario_dir=scenario_dir,
+        output=output,
+        skip_regression=args.no_regression,
+    )
+
+
+def _run_eval_history(args: argparse.Namespace) -> None:
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from evals.regression_store import RegressionStore  # type: ignore[import]
+
+    store = RegressionStore()
+    runs = store.list_runs(limit=args.limit)
+
+    if not runs:
+        print("No eval runs recorded yet. Run: agentledger eval")
+        return
+
+    print(f"\n{'='*70}")
+    print(f"{'Run ID':<14} {'Timestamp (UTC)':<22} {'Model':<20} {'Pass Rate'}")
+    print(f"{'-'*13} {'-'*21} {'-'*19} {'-'*10}")
+    for r in runs:
+        ts = r["timestamp"][:19].replace("T", " ")
+        pass_rate = f"{r['passed']}/{r['total']} ({r['passed']/max(r['total'],1):.0%})"
+        print(f"  {r['run_id'][:12]:<12}  {ts:<21}  {r['model']:<19}  {pass_rate}")
+    print(f"{'='*70}\n")
+
+    if args.show_last and runs:
+        last_id = runs[0]["run_id"]
+        diff = store.compare_to_previous(last_id)
+        if diff:
+            from evals.runner import _print_regression_report  # type: ignore[import]
+            _print_regression_report(diff)
 
 
 def main() -> None:
@@ -100,6 +131,20 @@ def main() -> None:
     eval_cmd = subparsers.add_parser("eval", help="Run evaluation harness")
     eval_cmd.add_argument("--scenario-dir", default="evals/scenarios")
     eval_cmd.add_argument("--output", default="evals/reports/latest.json")
+    eval_cmd.add_argument(
+        "--no-regression", action="store_true",
+        help="Skip regression diff against previous run",
+    )
+
+    # eval history command
+    history_cmd = subparsers.add_parser(
+        "eval-history", help="Show past eval runs and regression trends"
+    )
+    history_cmd.add_argument("--limit", type=int, default=10)
+    history_cmd.add_argument(
+        "--show-last", action="store_true",
+        help="Print regression diff for the most recent run",
+    )
 
     args = parser.parse_args()
 
@@ -112,6 +157,8 @@ def main() -> None:
         _run_analyze(args)
     elif args.command == "eval":
         _run_eval(args)
+    elif args.command == "eval-history":
+        _run_eval_history(args)
 
 
 if __name__ == "__main__":
