@@ -213,7 +213,7 @@ def run_pipeline(
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Invoke the full LangGraph pipeline. Returns (state_dict, transactions)."""
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(dotenv_path=ROOT / ".env", override=True)
 
     prev_token: str | None = None
     if access_token:
