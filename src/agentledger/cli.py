@@ -9,10 +9,78 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import sys
 from pathlib import Path
+
+
+def _run_analyze(args: argparse.Namespace) -> None:
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    from agentledger.schemas.models import WorkflowState
+    from agentledger.workflow.graph import credit_analysis_graph
+
+    print(f"[AgentLedger] Analyzing borrower={args.user_id} loan=${args.loan_amount:,.0f}")
+
+    initial_state = WorkflowState(
+        user_id=args.user_id,
+        loan_amount=args.loan_amount,
+        loan_purpose=args.loan_purpose or "General credit review",
+    )
+
+    final_state = WorkflowState(**credit_analysis_graph.invoke(initial_state))
+
+    print(f"\n{'='*60}")
+    print(f"USER:     {final_state.user_id}")
+    print(f"RUN ID:   {final_state.run_id}")
+    print(f"LOAN:     ${final_state.loan_amount:,.0f} — {final_state.loan_purpose}")
+
+    if final_state.metrics:
+        m = final_state.metrics
+        print(f"\nMETRICS:")
+        print(f"  Avg monthly income:   ${m.avg_monthly_income:>10,.2f}")
+        print(f"  Avg monthly expenses: ${m.avg_monthly_expenses:>10,.2f}")
+        print(f"  DTI ratio:            {m.dti_ratio:>10.1%}")
+        print(f"  Income stability CV:  {m.income_cv:>10.3f}")
+        print(f"  NSF events:           {m.total_nsf_events:>10}")
+        print(f"  Cash buffer days:     {m.cash_buffer_days:>10.0f}")
+        print(f"  Rent-to-income:       {m.rent_to_income_ratio:>10.1%}")
+
+    if final_state.risk_assessment:
+        ra = final_state.risk_assessment
+        print(f"\nRISK ASSESSMENT:")
+        print(f"  Score:          {ra.risk_score}/100")
+        print(f"  Recommendation: {ra.recommendation.upper()}")
+        print(f"  Confidence:     {ra.confidence:.0%}")
+        print(f"  Summary:        {ra.reasoning_summary}")
+
+    if final_state.validation_result:
+        vr = final_state.validation_result
+        print(f"\nVALIDATION:")
+        print(f"  Citation validity:  {vr.overall_validity:.0%}")
+        print(f"  Hallucinated claims: {len(vr.hallucinated_claims)}")
+
+    if final_state.escalate_to_human:
+        print(f"\nESCALATED TO HUMAN REVIEW:")
+        for reason in (final_state.escalation_reasons or []):
+            print(f"  • {reason}")
+
+    if final_state.final_report_path:
+        print(f"\nREPORT: {final_state.final_report_path}")
+
+    print(f"{'='*60}")
+
+
+def _run_eval(args: argparse.Namespace) -> None:
+    # Resolve scenario dir relative to cwd so the CLI works from any location
+    scenario_dir = str(Path(args.scenario_dir).resolve())
+    output = str(Path(args.output).resolve())
+
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "evals"))
+    from evals.runner import main as eval_main  # type: ignore[import]
+
+    eval_main(scenario_dir=scenario_dir, output=output)
 
 
 def main() -> None:
@@ -26,7 +94,7 @@ def main() -> None:
     analyze.add_argument("--user-id", required=True)
     analyze.add_argument("--loan-amount", type=float, required=True)
     analyze.add_argument("--loan-purpose", default=None)
-    analyze.add_argument("--output-dir", default="reports")
+    analyze.add_argument("--output-dir", default="output/memos")
 
     # eval command
     eval_cmd = subparsers.add_parser("eval", help="Run evaluation harness")
@@ -44,78 +112,6 @@ def main() -> None:
         _run_analyze(args)
     elif args.command == "eval":
         _run_eval(args)
-
-
-def _run_analyze(args: argparse.Namespace) -> None:
-    from dotenv import load_dotenv
-    load_dotenv()
-
-    print(f"[AgentLedger] Analyzing borrower={args.user_id} loan=${args.loan_amount:,.0f}")
-
-    from typing import cast
-
-    from agentledger.schemas.models import WorkflowState
-    from agentledger.workflow.graph import credit_analysis_graph
-
-    initial_state = WorkflowState(
-        user_id=args.user_id,
-        loan_amount=args.loan_amount,
-        loan_purpose=args.loan_purpose,
-    )
-
-    try:
-        final_state = cast(WorkflowState, credit_analysis_graph.invoke(initial_state))
-    except Exception as exc:
-        print(f"[AgentLedger] Pipeline failed: {exc}", file=sys.stderr)
-        sys.exit(1)
-
-    # Persist state as JSON so the dashboard can load it
-    output_dir = Path(args.output_dir) / args.user_id
-    output_dir.mkdir(parents=True, exist_ok=True)
-    state_path = output_dir / f"state_{(final_state.run_id or 'unknown')[:8]}.json"
-    state_path.write_text(
-        json.dumps(final_state.model_dump(mode="json"), indent=2),
-        encoding="utf-8",
-    )
-
-    ra = final_state.risk_assessment
-    if ra:
-        print(f"\n{'='*60}")
-        print(f"  Decision:    {ra.recommendation.upper().replace('_', ' ')}")
-        print(f"  Risk Score:  {ra.risk_score}/100")
-        print(f"  Confidence:  {ra.confidence:.0%}")
-        print(f"  Summary:     {ra.reasoning_summary}")
-        print(f"{'='*60}")
-
-    if final_state.final_report_path:
-        print(f"\n  Memo:        {final_state.final_report_path}")
-    print(f"  State JSON:  {state_path}")
-
-    if final_state.escalate_to_human:
-        print(f"\n  ⚠  Escalated: {'; '.join(final_state.escalation_reasons)}")
-
-
-def _run_eval(args: argparse.Namespace) -> None:
-    from dotenv import load_dotenv
-    load_dotenv()
-
-    print(f"[AgentLedger] Running evals from {args.scenario_dir}")
-
-    # Add project root to path so evals/runner.py can be imported
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-
-    try:
-        from evals.runner import main as eval_main  # type: ignore[import]
-    except ImportError as exc:
-        print(f"[AgentLedger] Could not import eval runner: {exc}", file=sys.stderr)
-        sys.exit(1)
-
-    eval_main(
-        scenario_dir=args.scenario_dir,
-        output=args.output,
-    )
 
 
 if __name__ == "__main__":
