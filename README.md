@@ -99,7 +99,7 @@ ingest_node    profile_node          categorize_node
 
 ## Eval Results
 
-The eval harness (`python evals/runner.py`) runs 20 ground-truth YAML scenarios through the pipeline and asserts five properties per scenario: metric accuracy (±20% tolerance), recommendation match, risk score range, keyword presence, and citation validity (must be ≥ 85%).
+The eval harness (`python evals/runner.py`) runs 30 ground-truth YAML scenarios through the pipeline and asserts five properties per scenario: metric accuracy (±20% tolerance), recommendation match, risk score range, keyword presence, and citation validity (must be ≥ 85%).
 
 Results from latest run — **10/10 passing** (scenarios 11–20 pending token quota reset):
 
