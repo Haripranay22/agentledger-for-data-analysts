@@ -1,0 +1,20 @@
+scenario_id: "scn_019_very_high_income"
+description: "Very high-income W-2 ($12k/mo), zero NSF — strong approve, low risk score expected"
+borrower:
+  monthly_income: 12000
+  income_source: "W2"
+  rent: 3000
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [5, 35]
+  recommendation: "approve"
+  must_include_factors: ["income"]
+  must_not_include: ["nsf", "overdraft", "gambling", "decline"]
+metrics:
+  avg_monthly_income: 12000
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 0
+  cash_buffer_days: 21
+  rent_to_income_ratio: 0.25

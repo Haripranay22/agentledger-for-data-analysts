@@ -1,0 +1,20 @@
+scenario_id: "scn_020_gig_deficit_nsf"
+description: "Low-income gig worker, monthly expenses exceed income, plus NSF — clear decline"
+borrower:
+  monthly_income: 2500
+  income_source: "gig"
+  rent: 1100
+  has_nsf: true
+  months_data: 6
+expected:
+  risk_score_range: [70, 100]
+  recommendation_any_of: ["decline", "manual_review"]
+  must_include_factors: ["income", "nsf"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 2500
+  income_cv: 0.25
+  dti_ratio: 0.31
+  nsf_count: 1
+  cash_buffer_days: 0
+  rent_to_income_ratio: 0.44

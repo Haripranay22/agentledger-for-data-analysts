@@ -14,12 +14,12 @@ from __future__ import annotations
 
 import logging
 import pickle
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
 import numpy as np
-import pandas as pd
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
@@ -102,8 +102,8 @@ class TransactionCategorizer:
         Train on labeled data. Returns accuracy metrics.
         Target: 85%+ on holdout (RF baseline), then 90%+ with GBM.
         """
-        X = self._make_feature(transactions)
-        X_train, X_test, y_train, y_test = train_test_split(
+        X = self._make_feature(transactions)  # noqa: N806
+        X_train, X_test, y_train, y_test = train_test_split(  # noqa: N806
             X, labels, test_size=test_size, random_state=42, stratify=labels
         )
 
@@ -126,7 +126,7 @@ class TransactionCategorizer:
         if self._pipeline is None:
             raise RuntimeError("Model not trained. Call train() or load() first.")
 
-        X = self._make_feature(transactions)
+        X = self._make_feature(transactions)  # noqa: N806
         proba = self._pipeline.predict_proba(X)
         classes = self._pipeline.classes_
 
@@ -139,7 +139,7 @@ class TransactionCategorizer:
     def categorize(
         self,
         transactions: list[Transaction],
-        llm_fallback_fn: callable | None = None,
+        llm_fallback_fn: Callable[[Transaction], str] | None = None,
     ) -> list[CategorizedTransaction]:
         """
         Full categorization pipeline with LLM fallback.
@@ -152,22 +152,34 @@ class TransactionCategorizer:
             source: Literal["ml_model", "llm_fallback", "rule_based"] = "ml_model"
 
             if confidence < CONFIDENCE_THRESHOLD and llm_fallback_fn is not None:
-                category = llm_fallback_fn(txn)
-                confidence = 1.0  # LLM classified, trust it
-                source = "llm_fallback"
-                logger.debug("LLM fallback used for tx=%s", txn.transaction_id)
+                try:
+                    category = llm_fallback_fn(txn)
+                    confidence = 1.0
+                    source = "llm_fallback"
+                    logger.debug("LLM fallback used for tx=%s", txn.transaction_id)
+                except Exception as exc:
+                    logger.warning(
+                        "[categorize] LLM fallback failed for tx=%s (%s) — using ML result",
+                        txn.transaction_id, exc,
+                    )
 
             categorized.append(CategorizedTransaction(
                 **txn.model_dump(),
                 our_category=category,
                 confidence_score=confidence,
                 is_income=category.startswith("income_"),
-                is_recurring=category in {"rent_mortgage", "utilities", "subscription", "debt_payment"},
-                is_essential=category in {"rent_mortgage", "utilities", "groceries", "healthcare"},
+                is_recurring=category in {
+                    "rent_mortgage", "utilities", "subscription", "debt_payment"
+                },
+                is_essential=category in {
+                    "rent_mortgage", "utilities", "groceries", "healthcare"
+                },
                 categorization_source=source,
             ))
 
-        low_conf = sum(1 for _, (_, c) in zip(transactions, predictions) if c < CONFIDENCE_THRESHOLD)
+        low_conf = sum(
+            1 for _, (_, c) in zip(transactions, predictions) if c < CONFIDENCE_THRESHOLD
+        )
         logger.info(
             "Categorized %d transactions | low_confidence=%d (%.1f%%)",
             len(transactions), low_conf, 100 * low_conf / max(len(transactions), 1)

@@ -109,10 +109,10 @@ def profile_node(state: WorkflowState, context: dict[str, Any] | None = None) ->
 
 def categorize_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
     """
-    Hybrid ML + LLM categorization.
+    ML categorization (TF-IDF + RandomForest).
+    Low-confidence predictions fall back to "other" — no LLM needed here.
     Reads:  state.raw_transactions (plain Transaction objects from profile_node).
     Writes: state.transactions (CategorizedTransaction objects).
-    ML model handles ~90% of cases; LLM fallback for confidence < 0.70.
     """
     from agentledger.ml.categorizer import TransactionCategorizer
 
@@ -132,55 +132,9 @@ def categorize_node(state: WorkflowState, context: dict[str, Any] | None = None)
         )
 
     categorizer = TransactionCategorizer(model_path=model_path)
-    state.transactions = categorizer.categorize(
-        state.raw_transactions,
-        llm_fallback_fn=_build_llm_category_fallback(),
-    )
+    state.transactions = categorizer.categorize(state.raw_transactions)
     logger.info("[categorize] %d transactions categorized", len(state.transactions))
     return state
-
-
-def _build_llm_category_fallback():
-    """
-    Returns a function: Transaction → category_str.
-    Used by TransactionCategorizer when ML confidence < 0.70.
-    Calls Groq with a minimal prompt — no Pydantic overhead needed here.
-    """
-    import os
-    from agentledger.ml.categorizer import CATEGORIES
-
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        logger.warning("[categorize] GROQ_API_KEY not set — LLM fallback disabled")
-        return None
-
-    try:
-        from groq import Groq
-        groq_client = Groq(api_key=api_key)
-        model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-        categories_str = ", ".join(CATEGORIES)
-    except ImportError:
-        return None
-
-    def fallback(txn) -> str:
-        prompt = (
-            f"Classify this bank transaction into exactly one category.\n"
-            f"Merchant: {txn.merchant_name or ''}\n"
-            f"Description: {txn.description}\n"
-            f"Amount: {txn.amount}\n\n"
-            f"Categories: {categories_str}\n\n"
-            f"Reply with only the category name, nothing else."
-        )
-        response = groq_client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=20,
-            temperature=0,
-        )
-        raw = response.choices[0].message.content.strip().lower().replace(" ", "_")
-        return raw if raw in CATEGORIES else "other"
-
-    return fallback
 
 
 def analyze_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
@@ -188,25 +142,20 @@ def analyze_node(state: WorkflowState, context: dict[str, Any] | None = None) ->
     Compute 8 cash-flow metrics deterministically.
     MUST match dbt SQL output before proceeding.
     """
+    from agentledger.analysis.reconcile import assert_metrics_match
+
     logger.info("[analyze] Computing cash flow metrics for user=%s", state.user_id)
     if state.transactions:
         state.metrics = compute_metrics(state.user_id, state.transactions)
+        assert_metrics_match(state.metrics)
     return state
 
 
 def _build_llm_client() -> Any:
-    """Create an Instructor-patched Groq client for structured LLM output."""
-    import instructor
-    from groq import Groq
+    """Create an instructor-patched OpenAI client; Langfuse-instrumented when configured."""
+    from agentledger.observability.tracer import build_llm_client
 
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        raise RuntimeError("GROQ_API_KEY environment variable not set")
-
-    return instructor.from_groq(
-        Groq(api_key=api_key),
-        mode=instructor.Mode.JSON,
-    )
+    return build_llm_client()
 
 
 def risk_assess_node(state: WorkflowState, context: dict[str, Any] | None = None) -> WorkflowState:
@@ -266,7 +215,7 @@ def risk_assess_node(state: WorkflowState, context: dict[str, Any] | None = None
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        model=os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
         max_retries=2,
     )
     latency_ms = (time.perf_counter() - t0) * 1000
@@ -382,16 +331,19 @@ def report_node(state: WorkflowState, context: dict[str, Any] | None = None) -> 
     """Generate Markdown credit memo + audit log."""
     from pathlib import Path
 
+    from agentledger.observability.tracer import flush_traces
     from agentledger.reporting.memo_generator import MemoGenerator
 
     logger.info("[report] Generating credit memo for user=%s", state.user_id)
 
     if state.risk_assessment is None or state.metrics is None:
         logger.warning("[report] Missing assessment or metrics — skipping memo generation")
+        flush_traces()
         return state
 
     output_dir = Path("reports") / state.user_id
     path = MemoGenerator().save(state, output_dir)
     state.final_report_path = str(path)
     logger.info("[report] Memo written: %s", path)
+    flush_traces()
     return state

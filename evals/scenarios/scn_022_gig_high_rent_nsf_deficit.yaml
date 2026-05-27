@@ -1,0 +1,20 @@
+scenario_id: "scn_022_gig_high_rent_nsf_deficit"
+description: "Gig worker, rent $1800 on $3500 income + NSF — monthly deficit, clear decline"
+borrower:
+  monthly_income: 3500
+  income_source: "gig"
+  rent: 1800
+  has_nsf: true
+  months_data: 6
+expected:
+  risk_score_range: [70, 100]
+  recommendation: "decline"
+  must_include_factors: ["income", "nsf"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 3500
+  income_cv: 0.27
+  dti_ratio: 0.31
+  nsf_count: 1
+  cash_buffer_days: 0
+  rent_to_income_ratio: 0.51

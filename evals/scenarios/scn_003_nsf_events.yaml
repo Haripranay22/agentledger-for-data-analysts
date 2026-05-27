@@ -1,0 +1,20 @@
+scenario_id: "scn_003_nsf_events"
+description: "W-2 employee with one NSF event — should flag overdraft risk"
+borrower:
+  monthly_income: 4500
+  income_source: "W2"
+  rent: 1500
+  has_nsf: true
+  months_data: 6
+expected:
+  risk_score_range: [30, 75]
+  recommendation_any_of: ["approve_with_conditions", "manual_review"]
+  must_include_factors: ["nsf", "overdraft"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 4500
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 1
+  cash_buffer_days: 9
+  rent_to_income_ratio: 0.333

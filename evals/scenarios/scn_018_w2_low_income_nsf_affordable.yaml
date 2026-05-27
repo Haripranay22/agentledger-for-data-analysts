@@ -1,0 +1,20 @@
+scenario_id: "scn_018_w2_low_income_nsf_affordable"
+description: "W-2 with low income and one NSF but affordable rent — borderline with conditions"
+borrower:
+  monthly_income: 3000
+  income_source: "W2"
+  rent: 900
+  has_nsf: true
+  months_data: 6
+expected:
+  risk_score_range: [40, 78]
+  recommendation_any_of: ["approve_with_conditions", "manual_review"]
+  must_include_factors: ["income", "nsf"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 3000
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 1
+  cash_buffer_days: 7
+  rent_to_income_ratio: 0.30

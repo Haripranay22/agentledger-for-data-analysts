@@ -1,0 +1,61 @@
+version: 2
+
+models:
+  - name: int_transactions_categorized
+    description: >
+      Transactions enriched with ML-assigned category, income/recurring/essential flags.
+      Joins stg_transactions (Plaid) with ml.categorizations output.
+      This is the primary input to fct_user_metrics.
+    columns:
+      - name: transaction_id
+        description: "Plaid transaction ID — globally unique"
+        tests: [unique, not_null]
+      - name: user_id
+        description: "Borrower identifier"
+        tests: [not_null]
+      - name: transaction_date
+        description: "Date of settlement"
+        tests: [not_null]
+      - name: amount
+        description: "Signed amount in USD (positive = income, negative = expense)"
+        tests: [not_null]
+      - name: our_category
+        description: "ML-assigned spending category"
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - income_salary
+                - income_freelance
+                - income_government
+                - income_other
+                - rent_mortgage
+                - utilities
+                - groceries
+                - dining_entertainment
+                - transportation
+                - healthcare
+                - debt_payment
+                - subscription
+                - gambling
+                - atm_cash
+                - transfer
+                - nsf_fee
+                - savings_investment
+                - other
+      - name: confidence_score
+        description: "ML model confidence (0–1). Below 0.70 → LLM fallback was used."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0.0
+              max_value: 1.0
+      - name: is_income
+        description: "True when our_category starts with income_"
+        tests: [not_null]
+      - name: is_recurring
+        description: "True for rent, utilities, subscriptions, debt payments"
+        tests: [not_null]
+      - name: is_essential
+        description: "True for rent, utilities, groceries, healthcare"
+        tests: [not_null]

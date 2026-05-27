@@ -26,7 +26,7 @@ import uuid
 from datetime import date, timedelta
 from pathlib import Path
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -55,13 +55,32 @@ VALIDITY_THRESHOLD = 0.85  # citation validity must be ≥ this to pass
 def _make_transactions(user_id: str, borrower: dict) -> list[CategorizedTransaction]:
     """
     Build synthetic CategorizedTransaction list from a YAML borrower profile.
-    Produces realistic monthly cash flows matching the profile's income/rent/NSF.
+
+    Borrower fields:
+      months_data        int   — months of history to generate
+      income_source      str   — "W2" or "gig"
+      monthly_income     float — average monthly income
+      rent               float — monthly rent
+      nsf_count          int   — total NSF events (spread across months). Default 0.
+      has_nsf            bool  — legacy alias: True = nsf_count 1. Ignored if nsf_count set.
+      has_gambling       bool  — adds $150 gambling txn per month. Default False.
+      income_drop_month  int   — zero-income month index (0=most recent). Default None.
     """
+    import calendar as cal
+
     months = borrower["months_data"]
     income_source = borrower["income_source"]
     monthly_income = float(borrower["monthly_income"])
     rent = float(borrower["rent"])
-    has_nsf = borrower.get("has_nsf", False)
+
+    # nsf_count supersedes has_nsf for backward compatibility
+    if "nsf_count" in borrower:
+        nsf_count = int(borrower["nsf_count"])
+    else:
+        nsf_count = 1 if borrower.get("has_nsf", False) else 0
+
+    has_gambling = borrower.get("has_gambling", False)
+    income_drop_month = borrower.get("income_drop_month", None)
 
     today = date.today()
     txns: list[CategorizedTransaction] = []
@@ -97,41 +116,54 @@ def _make_transactions(user_id: str, borrower: dict) -> list[CategorizedTransact
         )
 
     def month_date(months_ago: int, day: int) -> date:
-        """Return a date on a specific day, N calendar months ago."""
         m = today.month - months_ago
         y = today.year
         while m <= 0:
             m += 12
             y -= 1
-        # Clamp day to valid range for that month
-        import calendar
-        max_day = calendar.monthrange(y, m)[1]
+        max_day = cal.monthrange(y, m)[1]
         return date(y, m, min(day, max_day))
 
-    # Income pattern: stable for W2, irregular for gig
+    # Income pattern
     if income_source == "W2":
         incomes = [monthly_income] * months
         income_cat, income_merchant = "income_salary", "EMPLOYER PAYROLL"
     else:
-        raw = [5200.0, 3100.0, 4800.0, 2900.0, 5500.0, 3600.0]
-        scale = monthly_income / (sum(raw) / len(raw))
-        incomes = [round(v * scale, 2) for v in raw[:months]]
+        raw_pattern = [5200.0, 3100.0, 4800.0, 2900.0, 5500.0, 3600.0]
+        raw = [raw_pattern[i % len(raw_pattern)] for i in range(months)]
+        scale = monthly_income / (sum(raw_pattern) / len(raw_pattern))
+        incomes = [round(v * scale, 2) for v in raw]
         income_cat, income_merchant = "income_freelance", "STRIPE PAYOUT"
 
-    # Debt payment sized to match expected DTI exactly
+    # Apply income drop: zero income for that month index
+    if income_drop_month is not None and 0 <= income_drop_month < months:
+        incomes[income_drop_month] = 0.0
+
+    # Debt payment sized to match expected DTI
     expected_dti = 0.28 if income_source == "W2" else 0.31
     debt_payment = round(monthly_income * expected_dti, 2)
 
+    # Spread NSF events evenly across months (skip month 0 = most recent)
+    nsf_months: set[int] = set()
+    if nsf_count > 0:
+        step = max(1, months // (nsf_count + 1))
+        for k in range(nsf_count):
+            m_idx = min((k + 1) * step, months - 1)
+            nsf_months.add(m_idx)
+
     for i in range(months):
-        txns.append(txn(month_date(i, 5),  incomes[i],    income_merchant,    income_cat,            True,  income_source == "W2", False))
-        txns.append(txn(month_date(i, 1),  -rent,          "PROPERTY MGMT",    "rent_mortgage",        False, True,  True))
-        txns.append(txn(month_date(i, 8),  -300.0,         "WHOLE FOODS",      "groceries",            False, True,  True))
-        txns.append(txn(month_date(i, 10), -120.0,         "ELECTRIC CO",      "utilities",            False, True,  True))
-        txns.append(txn(month_date(i, 15), -debt_payment,  "VISA CREDIT CARD", "debt_payment",         False, True,  False))
-        txns.append(txn(month_date(i, 18), -200.0,         "RESTAURANTS",      "dining_entertainment", False, False, False))
-        txns.append(txn(month_date(i, 22), -80.0,          "UBER",             "transportation",       False, False, False))
-        if has_nsf and i == 2:
+        if incomes[i] > 0:
+            txns.append(txn(month_date(i, 5), incomes[i], income_merchant, income_cat, True, income_source == "W2", False))
+        txns.append(txn(month_date(i, 1),  -rent,         "PROPERTY MGMT",    "rent_mortgage",        False, True,  True))
+        txns.append(txn(month_date(i, 8),  -300.0,        "WHOLE FOODS",      "groceries",            False, True,  True))
+        txns.append(txn(month_date(i, 10), -120.0,        "ELECTRIC CO",      "utilities",            False, True,  True))
+        txns.append(txn(month_date(i, 15), -debt_payment, "VISA CREDIT CARD", "debt_payment",         False, True,  False))
+        txns.append(txn(month_date(i, 18), -200.0,        "RESTAURANTS",      "dining_entertainment", False, False, False))
+        txns.append(txn(month_date(i, 22), -80.0,         "UBER",             "transportation",       False, False, False))
+        if i in nsf_months:
             txns.append(txn(month_date(i, 25), -35.0, "NSF FEE", "nsf_fee", False, False, False))
+        if has_gambling:
+            txns.append(txn(month_date(i, 20), -150.0, "DRAFTKINGS", "gambling", False, False, False))
 
     return txns
 
@@ -310,7 +342,17 @@ def main(
     print(f"AgentLedger Eval Harness — {len(scenarios)} scenarios")
     print(f"{'='*60}")
 
-    results = [run_scenario(s) for s in scenarios]
+    results = []
+    for s in scenarios:
+        try:
+            results.append(run_scenario(s))
+        except Exception as exc:
+            msg = str(exc)
+            if "rate_limit" in msg.lower() or "429" in msg or "RateLimitError" in type(exc).__name__:
+                print(f"\n  [rate limit] Gemini quota reached after {len(results)} scenarios.")
+                print(f"  Partial results saved. Re-run after quota window resets.")
+                break
+            raise
 
     # ── Summary table ──────────────────────────────────────────────────────
     passed = sum(1 for r in results if r["passed"])

@@ -1,0 +1,20 @@
+scenario_id: "scn_015_gig_tight_nsf"
+description: "Gig worker with tight cash flow and one NSF event — dual red flags"
+borrower:
+  monthly_income: 3500
+  income_source: "gig"
+  rent: 1200
+  has_nsf: true
+  months_data: 6
+expected:
+  risk_score_range: [50, 88]
+  recommendation_any_of: ["manual_review", "decline", "approve_with_conditions"]
+  must_include_factors: ["income"]
+  must_not_include: ["gambling"]
+metrics:
+  avg_monthly_income: 3500
+  income_cv: 0.25
+  dti_ratio: 0.31
+  nsf_count: 1
+  cash_buffer_days: 5
+  rent_to_income_ratio: 0.343

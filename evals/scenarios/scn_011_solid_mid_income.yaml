@@ -1,0 +1,20 @@
+scenario_id: "scn_011_solid_mid_income"
+description: "W-2 employee, solid mid-range income, low rent burden — clean approve"
+borrower:
+  monthly_income: 6000
+  income_source: "W2"
+  rent: 1500
+  has_nsf: false
+  months_data: 6
+expected:
+  risk_score_range: [15, 50]
+  recommendation: "approve"
+  must_include_factors: ["income"]
+  must_not_include: ["nsf", "overdraft", "gambling"]
+metrics:
+  avg_monthly_income: 6000
+  income_cv: 0.0
+  dti_ratio: 0.28
+  nsf_count: 0
+  cash_buffer_days: 16
+  rent_to_income_ratio: 0.25
