@@ -21,12 +21,16 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 
+from dashboard.review_store import REVIEW_DECISION_LABELS as _REVIEW_DECISION_LABELS
+from dashboard.review_store import ReviewStore
 from dashboard.sample_data import (
     DEMO_STATE,
     DEMO_TRANSACTIONS,
     get_expense_breakdown,
     get_monthly_income_series,
 )
+
+_review_store = ReviewStore()
 
 # ── Page config ────────────────────────────────────────────────────────────────
 
@@ -63,10 +67,51 @@ st.markdown("""
   .rec-approve_with_conditions { background: #713f12; color: #fbbf24; }
   .rec-manual_review        { background: #1e3a5f; color: #60a5fa; }
   .rec-decline              { background: #7f1d1d; color: #f87171; }
+  .rec-defer                { background: #2d1b69; color: #a78bfa; }
 
   .severity-low    { color: #4ade80; font-weight: 600; }
   .severity-medium { color: #fbbf24; font-weight: 600; }
   .severity-high   { color: #f87171; font-weight: 600; }
+
+  .hitl-banner {
+    background: linear-gradient(135deg, #2d1f00 0%, #1a1400 100%);
+    border: 1px solid #92400e;
+    border-left: 4px solid #f59e0b;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+  }
+  .hitl-reviewed {
+    background: linear-gradient(135deg, #0d1f0d 0%, #071207 100%);
+    border: 1px solid #166534;
+    border-left: 4px solid #22c55e;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+  }
+  .reviewed-tag {
+    display: inline-block;
+    background: #14532d;
+    color: #4ade80;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 12px;
+    letter-spacing: 0.04em;
+    margin-left: 10px;
+    vertical-align: middle;
+  }
+  .human-badge {
+    display: inline-block;
+    background: #1e3a5f;
+    color: #93c5fd;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
 
   div[data-testid="stMetric"] label { color: #8a9ab5 !important; }
 </style>
@@ -79,6 +124,7 @@ REC_LABELS = {
     "approve_with_conditions": "APPROVE W/ CONDITIONS",
     "manual_review":          "MANUAL REVIEW",
     "decline":                "DECLINE",
+    "defer":                  "DEFER",
 }
 
 REC_COLORS = {
@@ -251,6 +297,34 @@ def run_pipeline(
                 os.environ["PLAID_ACCESS_TOKEN"] = prev_token
 
 
+# ── HITL Review persistence ────────────────────────────────────────────────────
+
+_REVIEW_DECISIONS = list(_REVIEW_DECISION_LABELS.keys())
+
+
+def _load_review(run_id: str) -> dict[str, Any] | None:
+    """Return persisted review for this run_id, or None (falls back to session state for demo)."""
+    if not run_id:
+        return st.session_state.get("_hitl_review_no_id")
+    return _review_store.load(run_id)
+
+
+def _save_review(run_id: str, review: dict[str, Any]) -> None:
+    """Persist review; falls back to session state when there is no run_id (demo mode)."""
+    if run_id:
+        _review_store.save(
+            run_id=run_id,
+            reviewer=review["reviewer"],
+            decision=review["decision"],
+            notes=review.get("notes", ""),
+            ai_recommendation=review.get("ai_recommendation", ""),
+            escalation_reasons=review.get("escalation_reasons", []),
+            timestamp=review.get("timestamp"),
+        )
+    else:
+        st.session_state["_hitl_review_no_id"] = review
+
+
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 
 with st.sidebar:
@@ -376,35 +450,155 @@ ra = state.get("risk_assessment", {})
 vr = state.get("validation_result", {})
 rec = ra.get("recommendation", "manual_review")
 
+run_id: str = state.get("run_id") or ""
+escalated: bool = bool(state.get("escalate_to_human"))
+
+# Load any existing human review (disk or session state)
+existing_review: dict[str, Any] | None = _load_review(run_id)
+human_decision: str = existing_review["decision"] if existing_review else ""
+display_rec = human_decision if (human_decision and human_decision != "confirm_ai") else rec
+
 # ── Header ─────────────────────────────────────────────────────────────────────
 
 col_title, col_rec = st.columns([3, 1])
 with col_title:
-    st.markdown(f"## Borrower: `{state['user_id']}`")
+    reviewed_tag = (
+        f'<span class="reviewed-tag">✔ Reviewed by {existing_review["reviewer"]}</span>'
+        if existing_review else ""
+    )
+    st.markdown(
+        f"## Borrower: `{state['user_id']}`{reviewed_tag}",
+        unsafe_allow_html=True,
+    )
     st.markdown(
         f"Loan request: **{fmt_currency(state['loan_amount'])}**"
         + (f" — {state['loan_purpose']}" if state.get("loan_purpose") else "")
-        + f"  |  Run ID: `{(state.get('run_id') or 'N/A')[:12]}`"
+        + f"  |  Run ID: `{(run_id or 'N/A')[:12]}`"
     )
 
 with col_rec:
-    badge_class = f"rec-{rec}"
-    badge_label = REC_LABELS.get(rec, rec.upper())
+    badge_class = f"rec-{display_rec}"
+    badge_label = REC_LABELS.get(display_rec, display_rec.upper().replace("_", " "))
+    human_tag = '<span class="human-badge">HUMAN</span>' if existing_review and human_decision != "confirm_ai" else ""
     st.markdown(
         f'<div style="text-align:right; padding-top:8px">'
-        f'<span class="rec-badge {badge_class}">{badge_label}</span>'
+        f'<span class="rec-badge {badge_class}">{badge_label}</span>{human_tag}'
         f'</div>',
         unsafe_allow_html=True,
     )
-    if state.get("escalate_to_human"):
+    if escalated and not existing_review:
         st.markdown(
             '<div style="text-align:right; color:#fbbf24; font-size:0.82rem;">'
-            "⚠️ Escalated for review"
+            "⚠️ Pending human review"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    elif escalated and existing_review:
+        st.markdown(
+            '<div style="text-align:right; color:#4ade80; font-size:0.82rem;">'
+            "✔ Review complete"
             "</div>",
             unsafe_allow_html=True,
         )
 
 st.divider()
+
+# ── HITL Review Panel ──────────────────────────────────────────────────────────
+
+if escalated:
+    _amend_key = f"_hitl_amend_{run_id or 'demo'}"
+
+    if existing_review:
+        decision_label = _REVIEW_DECISION_LABELS.get(
+            existing_review["decision"], existing_review["decision"]
+        )
+        notes_html = (
+            f'<br><br><strong>Notes:</strong><br>'
+            f'<span style="color:#cbd5e1; font-style:italic">{existing_review["notes"]}</span>'
+            if existing_review.get("notes") else ""
+        )
+        st.markdown(
+            f'<div class="hitl-reviewed">'
+            f'<strong style="color:#4ade80">✔ Human review complete</strong>'
+            f'<span style="color:#6b7280; font-size:0.8rem; margin-left:12px">'
+            f'{existing_review.get("timestamp", "")[:19].replace("T", " ")} UTC</span>'
+            f'<br><br>'
+            f'<strong>Reviewer:</strong> <span style="color:#e8edf5">{existing_review["reviewer"]}</span>'
+            f'&nbsp;&nbsp;|&nbsp;&nbsp;'
+            f'<strong>Decision:</strong> <span style="color:#e8edf5">{decision_label}</span>'
+            f'{notes_html}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("✏️  Amend review", key=_amend_key):
+            st.session_state[_amend_key + "_open"] = True
+        show_form = st.session_state.get(_amend_key + "_open", False)
+    else:
+        reasons_html = "".join(
+            f'<li style="color:#fcd34d">{r}</li>'
+            for r in state.get("escalation_reasons", [])
+        )
+        st.markdown(
+            f'<div class="hitl-banner">'
+            f'<strong style="color:#f59e0b; font-size:1.05rem">⚠️ Escalated for human review</strong>'
+            f'<ul style="margin:10px 0 0 0; padding-left:20px">{reasons_html}</ul>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        show_form = True
+
+    if show_form:
+        ai_rec_label = REC_LABELS.get(rec, rec.upper())
+        decision_options = list(_REVIEW_DECISION_LABELS.keys())
+        decision_labels_list = [_REVIEW_DECISION_LABELS[d] for d in decision_options]
+        default_idx = (
+            decision_options.index(existing_review["decision"])
+            if existing_review and existing_review["decision"] in decision_options
+            else 0
+        )
+        with st.form(f"hitl_form_{run_id or 'demo'}"):
+            st.markdown("**Submit human review**")
+            r1, r2 = st.columns([1, 2])
+            with r1:
+                reviewer_name = st.text_input(
+                    "Reviewer name / ID",
+                    value=existing_review["reviewer"] if existing_review else "",
+                    placeholder="e.g. Jane Smith",
+                )
+            with r2:
+                decision_idx = st.selectbox(
+                    f"Decision  (AI recommended: **{ai_rec_label}**)",
+                    range(len(decision_options)),
+                    format_func=lambda i: decision_labels_list[i],
+                    index=default_idx,
+                )
+            review_notes = st.text_area(
+                "Notes / rationale (optional)",
+                value=existing_review.get("notes", "") if existing_review else "",
+                placeholder="Add any context, conditions, or documentation requests…",
+                height=100,
+            )
+            submit_review = st.form_submit_button(
+                "✔  Submit review", type="primary", use_container_width=False
+            )
+
+        if submit_review:
+            if not reviewer_name.strip():
+                st.error("Reviewer name is required.")
+            else:
+                review_data: dict[str, Any] = {
+                    "run_id": run_id,
+                    "reviewer": reviewer_name.strip(),
+                    "decision": decision_options[int(decision_idx)],
+                    "notes": review_notes.strip(),
+                    "ai_recommendation": rec,
+                    "escalation_reasons": state.get("escalation_reasons", []),
+                }
+                _save_review(run_id, review_data)
+                st.session_state.pop(_amend_key + "_open", None)
+                st.rerun()
+
+    st.divider()
 
 # ── KPI Row ────────────────────────────────────────────────────────────────────
 
@@ -482,8 +676,17 @@ with col_summary:
     v2.metric("Status", "Passed" if vpass else "Failed")
     v3.metric("Hallucinated Claims", len(vr.get("hallucinated_claims", [])))
 
-    if state.get("escalate_to_human"):
-        st.warning("**Escalated for human review**\n\n" + "\n".join(f"- {r}" for r in state.get("escalation_reasons", [])))
+    if escalated:
+        if existing_review:
+            decision_label = _REVIEW_DECISION_LABELS.get(
+                existing_review["decision"], existing_review["decision"]
+            )
+            st.success(
+                f"**Reviewed by {existing_review['reviewer']}** — {decision_label}"
+                + (f"\n\n_{existing_review['notes']}_" if existing_review.get("notes") else "")
+            )
+        else:
+            st.warning("**Escalated for human review** — see review panel above\n\n" + "\n".join(f"- {r}" for r in state.get("escalation_reasons", [])))
 
 st.divider()
 
@@ -672,8 +875,14 @@ with st.expander("Audit & Run Details"):
     a2.markdown(f"**Retries**\n\n{state.get('retry_count', 0)}")
     a3.markdown(f"**Report path**\n\n`{state.get('final_report_path') or 'Not saved'}`")
 
-    if state.get("escalate_to_human"):
+    if escalated:
         st.warning("**Escalation reasons:**\n" + "\n".join(f"- {r}" for r in state.get("escalation_reasons", [])))
+    if existing_review:
+        st.info(
+            f"**Human review:** {existing_review['reviewer']} · "
+            f"{_REVIEW_DECISION_LABELS.get(existing_review['decision'], existing_review['decision'])} · "
+            f"{existing_review.get('timestamp', '')[:19].replace('T', ' ')} UTC"
+        )
 
     st.markdown("**Validation details**")
     st.json({
