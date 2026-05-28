@@ -233,19 +233,23 @@ def _compute_income_series(transactions: list[dict[str, Any]]) -> tuple[list[str
     """Compute monthly income series from real transactions for the trend chart."""
     monthly: dict[str, float] = defaultdict(float)
     for t in transactions:
-        if t.get("is_income") and t.get("amount", 0) > 0:
+        if t.get("is_income") and t.get("amount") is not None:
             date_str = str(t.get("date", ""))[:7]  # "YYYY-MM"
             if len(date_str) == 7:
-                monthly[date_str] += t["amount"]
+                monthly[date_str] += abs(t["amount"])
     months_iso = sorted(monthly.keys())
     return [_iso_to_month_label(m) for m in months_iso], [monthly[m] for m in months_iso]
 
 
 def _compute_expense_breakdown(transactions: list[dict[str, Any]]) -> dict[str, float]:
-    """Compute per-category expense totals (top 8) from real transactions."""
+    """Compute per-category expense totals (top 8) from real transactions.
+
+    Plaid stores expense amounts as positive numbers; the pipeline may also
+    store them as negative. We rely solely on is_income=False and use abs().
+    """
     totals: dict[str, float] = defaultdict(float)
     for t in transactions:
-        if not t.get("is_income") and t.get("amount", 0) < 0:
+        if not t.get("is_income") and t.get("amount") is not None and t["amount"] != 0:
             cat = t.get("category") or "other"
             totals[cat] += abs(t["amount"])
     return dict(sorted(totals.items(), key=lambda x: x[1], reverse=True)[:8])
