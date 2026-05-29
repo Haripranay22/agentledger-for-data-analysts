@@ -21,6 +21,17 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 
+# Load .env at startup so sidebar badges and pre-flight checks reflect real credentials
+from dotenv import dotenv_values as _dotenv_values
+_env_file = ROOT / ".env"
+if _env_file.exists():
+    _dotenv = _dotenv_values(_env_file)
+    for _k, _v in _dotenv.items():
+        os.environ[_k] = _v or ""
+    for _var in ("OPENAI_BASE_URL",):
+        if _var not in _dotenv:
+            os.environ.pop(_var, None)
+
 from dashboard.review_store import REVIEW_DECISION_LABELS as _REVIEW_DECISION_LABELS
 from dashboard.review_store import ReviewStore
 from dashboard.sample_data import (
