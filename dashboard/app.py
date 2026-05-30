@@ -345,7 +345,9 @@ def _compute_income_series(
     for t in transactions:
         if t.get("is_income") and t.get("amount") is not None:
             date_str = str(t.get("date", ""))[:7]
-            if len(date_str) == 7:
+            # Validate YYYY-MM format strictly to avoid phantom chart entries
+            if (len(date_str) == 7 and date_str[4] == "-"
+                    and date_str[:4].isdigit() and date_str[5:].isdigit()):
                 monthly[date_str] += abs(t["amount"])
     months_iso = sorted(monthly.keys())
     return [_iso_to_month_label(m) for m in months_iso], [monthly[m] for m in months_iso]
@@ -877,10 +879,11 @@ c1, c2 = st.columns(2)
 with c1:
     st.markdown('<div class="section-title">Monthly Income Trend</div>', unsafe_allow_html=True)
     try:
-        if transactions and data_source in ("Run live analysis", "Demo (no API needed)"):
-            months, income_vals = _compute_income_series(transactions)
-        if not transactions or not months:
-            months, income_vals = get_monthly_income_series()
+        months, income_vals = get_monthly_income_series()  # default
+        if transactions:
+            live_m, live_v = _compute_income_series(transactions)
+            if live_m:
+                months, income_vals = live_m, live_v
         avg_i = avg_inc
 
         fig_inc = go.Figure()
@@ -922,10 +925,11 @@ with c1:
 with c2:
     st.markdown('<div class="section-title">Expense Breakdown</div>', unsafe_allow_html=True)
     try:
-        if transactions and data_source in ("Run live analysis", "Demo (no API needed)"):
-            breakdown = _compute_expense_breakdown(transactions)
-        if not transactions or not breakdown:
-            breakdown = get_expense_breakdown()
+        breakdown = get_expense_breakdown()  # default
+        if transactions:
+            live_bd = _compute_expense_breakdown(transactions)
+            if live_bd:
+                breakdown = live_bd
         labels_e = list(breakdown.keys())
         values_e = list(breakdown.values())
 
