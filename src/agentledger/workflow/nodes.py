@@ -58,12 +58,39 @@ def ingest_node(state: WorkflowState, context: dict[str, Any] | None = None) -> 
 
     plaid_env = os.environ.get("PLAID_ENV", "sandbox")
     client = PlaidClient(client_id=client_id, secret=secret, env=plaid_env)
+    months = int(os.environ.get("PLAID_MONTHS", "6"))
     state.raw_transactions = client.get_transactions(
         access_token=access_token,
         user_id=state.user_id,
-        months=int(os.environ.get("PLAID_MONTHS", "6")),
+        months=months,
     )
     logger.info("[ingest] Pulled %d raw transactions", len(state.raw_transactions))
+
+    # Archive raw Plaid JSON to S3 if bucket is configured
+    s3_bucket = os.environ.get("AUDIT_S3_BUCKET", "").strip()
+    if s3_bucket:
+        try:
+            import boto3  # type: ignore[import-untyped]
+            raw_payload = {
+                "run_id": state.run_id,
+                "user_id": state.user_id,
+                "transaction_count": len(state.raw_transactions),
+                "transactions": [
+                    t.model_dump(mode="json") for t in state.raw_transactions
+                ],
+            }
+            prefix = os.environ.get("AUDIT_S3_PREFIX", "audit-logs/").rstrip("/")
+            key = f"{prefix}/raw-plaid/{state.run_id}.json"
+            boto3.client("s3").put_object(
+                Bucket=s3_bucket,
+                Key=key,
+                Body=json.dumps(raw_payload, default=str),
+                ContentType="application/json",
+            )
+            logger.info("[ingest] Raw Plaid JSON archived → s3://%s/%s", s3_bucket, key)
+        except Exception as exc:
+            logger.warning("[ingest] S3 archive failed (non-fatal): %s", exc)
+
     return state
 
 
@@ -346,5 +373,13 @@ def report_node(state: WorkflowState, context: dict[str, Any] | None = None) -> 
     state.final_report_path = str(md_path)
     state.final_report_pdf_path = str(pdf_path) if pdf_path else None
     logger.info("[report] Memo written: %s", md_path)
+
+    # Persist run to PostgreSQL (non-fatal if DB not configured)
+    try:
+        from agentledger.db import save_run
+        save_run(state)
+    except Exception as exc:
+        logger.warning("[report] DB persist skipped: %s", exc)
+
     flush_traces()
     return state

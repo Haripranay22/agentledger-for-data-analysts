@@ -24,7 +24,13 @@ logger = logging.getLogger(__name__)
 def _get_conn() -> psycopg2.connection:  # type: ignore[name-defined]
     url = os.environ.get("DATABASE_URL")
     if not url:
-        raise RuntimeError("DATABASE_URL not set in .env")
+        # Fall back to individual DB_* vars (docker-compose convention)
+        host     = os.environ.get("DB_HOST", "localhost")
+        port     = os.environ.get("DB_PORT", "5432")
+        name     = os.environ.get("DB_NAME", "agentledger")
+        user     = os.environ.get("DB_USER", "agentledger")
+        password = os.environ.get("DB_PASSWORD", "agentledger")
+        url = f"postgresql://{user}:{password}@{host}:{port}/{name}"
     return psycopg2.connect(url)
 
 
