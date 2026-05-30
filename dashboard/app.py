@@ -438,6 +438,8 @@ with st.sidebar:
     _checks = [
         ("LLM",   bool(os.environ.get("OPENAI_API_KEY"))),
         ("Plaid", bool(os.environ.get("PLAID_CLIENT_ID") and os.environ.get("PLAID_SECRET"))),
+        ("S3",    bool(os.environ.get("AUDIT_S3_BUCKET"))),
+        ("DB",    bool(os.environ.get("DATABASE_URL") or os.environ.get("DB_HOST"))),
         ("Tracing", bool(os.environ.get("LANGFUSE_PUBLIC_KEY"))),
     ]
     for _name, _ok in _checks:
