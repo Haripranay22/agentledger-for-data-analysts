@@ -7,16 +7,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl build-essential libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps first (better layer caching)
+# Copy package metadata + source before install (hatchling needs src/ to resolve the package)
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir -e ".[dashboard]" \
-    && pip install --no-cache-dir boto3
-
-# Copy source
 COPY src/ ./src/
+
+# Install all runtime extras in one layer (non-editable for production)
+RUN pip install --no-cache-dir ".[dashboard,cloud,plaid,observability]"
+
+# Copy remaining app code (changes here don't bust the pip cache layer above)
 COPY dashboard/ ./dashboard/
 COPY .streamlit/ ./.streamlit/
 COPY models/ ./models/
+COPY scripts/ ./scripts/
 
 # Create output dirs
 RUN mkdir -p reports/reviews output/memos evals
