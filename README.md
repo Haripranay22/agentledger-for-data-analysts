@@ -126,39 +126,7 @@ AgentLedger automates steps 1–4 and drafts step 5, reducing per-file analyst t
 
 ## Architecture
 
-```
-Borrower ID + Loan Amount
-         │
- ┌───────▼────────┐
- │   LangGraph    │  8-node state machine — each node is a pure function
- └───────┬────────┘
-         │
-┌────────┼──────────────────────────────┐
-▼        ▼                             ▼
-ingest   profile                  categorize
-(Plaid)  (data quality)           (ML + LLM fallback)
-                                        │
-                               ┌────────▼────────┐
-                               │    analyze      │  ← Python only, no LLM
-                               └────────┬────────┘
-                                        │
-                               ┌────────▼────────┐
-                               │  risk_assess    │  ← OpenAI gpt-4o-mini
-                               └────────┬────────┘
-                                        │
-                               ┌────────▼────────┐     ┌──────────────┐
-                               │    validate     │────▶│  retry loop  │ up to 2x
-                               └────────┬────────┘     └──────────────┘
-                                        │ validity ≥ 85%
-                               ┌────────▼────────┐
-                               │  hitl_check     │  ← Rules-based escalation
-                               └────────┬────────┘
-                                        │
-                        ┌───────────────┼──────────────────┐
-                        ▼               ▼                  ▼
-                     report         S3 archive         Postgres
-                 (Markdown memo)  (raw Plaid JSON)   (4 tables)
-```
+![AgentLedger system architecture](docs/architecture.png)
 
 **Core design principle: LLMs never compute numbers.**
 
