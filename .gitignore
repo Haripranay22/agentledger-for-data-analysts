@@ -50,3 +50,12 @@ reports/
 
 # Trained ML model artifacts (regenerate with scripts/train_categorizer.py)
 models/*.pkl
+
+# Eval regression history (local SQLite, regenerated on each run)
+evals/history.db
+
+# HITL review JSON records (runtime output)
+reviews/
+
+# Temp screenshot artifacts
+docs/screenshots/_full*.png

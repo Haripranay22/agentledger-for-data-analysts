@@ -286,24 +286,38 @@ agentledger-for-data-analysts/
 │   │   └── tracer.py           # Langfuse instrumentation
 │   └── db.py                   # PostgreSQL persistence (psycopg2)
 ├── dashboard/
-│   ├── app.py                  # Streamlit dashboard — production-grade
+│   ├── app.py                  # Streamlit dashboard — dark theme, live streaming
 │   ├── review_store.py         # HITL review JSON persistence
 │   └── sample_data.py          # Demo data (no API keys needed)
 ├── evals/
-│   ├── scenarios/              # 20 YAML ground-truth fixtures
+│   ├── scenarios/              # 30 YAML ground-truth fixtures
 │   ├── runner.py               # Eval harness — 5 assertions per scenario
 │   └── regression_store.py     # SQLite delta tracking across runs
+├── dbt/
+│   ├── models/staging/         # stg_transactions — raw Plaid data
+│   ├── models/intermediate/    # int_transactions_categorized
+│   └── models/marts/           # fct_user_metrics — mirrors Python metrics
 ├── scripts/
 │   ├── init_db.sql             # PostgreSQL schema (4 tables + indexes)
-│   ├── train_categorizer.py    # ML model training
-│   └── get_sandbox_token.py    # Plaid sandbox token helper
-├── tests/unit/                 # Pytest unit tests
-├── sample_outputs/             # 4 representative credit memos
+│   ├── train_categorizer.py    # ML model training (one-time)
+│   ├── get_sandbox_token.py    # Plaid sandbox token helper
+│   ├── smoke_test_risk_assess.py  # End-to-end LLM smoke test
+│   ├── make_pipeline_gif.py    # Regenerate docs/pipeline_demo.gif
+│   └── take_screenshots.py     # Regenerate docs/screenshots/
+├── tests/
+│   ├── unit/                   # Pytest unit tests (cash flow, categorizer, memo)
+│   └── integration/            # Pipeline node integration tests
+├── sample_outputs/             # 4 representative credit memos (approve/decline)
 ├── docs/
+│   ├── architecture.png        # System architecture diagram
 │   ├── pipeline_demo.gif       # Animated pipeline walkthrough
-│   └── screenshots/            # 9 dashboard screenshots
-├── Dockerfile                  # Production image
+│   └── screenshots/            # 9 annotated dashboard screenshots
+├── .github/workflows/
+│   ├── ci.yml                  # Lint + type-check + unit tests on every push
+│   └── smoke_test.yml          # Manual LLM pipeline smoke test
+├── Dockerfile                  # Production image (python:3.11-slim)
 ├── docker-compose.yml          # Full stack: Postgres + Dashboard + Langfuse
+├── pyproject.toml              # Package config, dependencies, tool settings
 └── .streamlit/config.toml      # Dark theme + server config
 ```
 
