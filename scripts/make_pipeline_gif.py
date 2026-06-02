@@ -50,7 +50,6 @@ def build_html(completed: int, running: int | None) -> str:
           </div>
         </div>"""
 
-    # Progress bar
     pct = int(completed / len(STEPS) * 100)
     if running is not None:
         pct = int((completed + 0.5) / len(STEPS) * 100)
@@ -74,8 +73,6 @@ def build_html(completed: int, running: int | None) -> str:
 </head>
 <body>
 <div style="padding: 24px 28px">
-
-  <!-- Header -->
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
     <div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
@@ -93,24 +90,17 @@ def build_html(completed: int, running: int | None) -> str:
       USER_001 · $25,000 · Home Improvement
     </div>
   </div>
-
-  <!-- Status label -->
   <div style="font-size:12px;font-weight:600;color:{status_color};margin-bottom:10px;min-height:16px">
     {status_label}
   </div>
-
-  <!-- Progress bar -->
   <div style="background:#1a1f2e;border-radius:4px;height:4px;margin-bottom:16px;overflow:hidden">
     <div style="background:linear-gradient(90deg,#4f8ef7,#7c3aed);height:4px;
                 width:{pct}%;border-radius:4px;transition:width 0.3s"></div>
   </div>
-
-  <!-- Steps -->
   <div style="display:flex;flex-direction:column;gap:2px">
     {rows}
   </div>
-
-  {"<!-- Done banner --><div style='margin-top:18px;background:#0d1b0f;border:1px solid #1a4a2a;border-radius:8px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between'><div><div style='color:#4ade80;font-size:13px;font-weight:700'>✓ Analysis complete</div><div style='color:#2a5a3a;font-size:11px;margin-top:2px'>Risk Score 26 · APPROVE · Citation validity 97%</div></div><div style='background:#0e2a1a;border:1px solid #1a4a2a;color:#4ade80;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700'>APPROVE</div></div>" if completed == len(STEPS) else ""}
+  {"<div style='margin-top:18px;background:#0d1b0f;border:1px solid #1a4a2a;border-radius:8px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between'><div><div style='color:#4ade80;font-size:13px;font-weight:700'>✓ Analysis complete</div><div style='color:#2a5a3a;font-size:11px;margin-top:2px'>Risk Score 26 · APPROVE · Citation validity 97%</div></div><div style='background:#0e2a1a;border:1px solid #1a4a2a;color:#4ade80;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700'>APPROVE</div></div>" if completed == len(STEPS) else ""}
 </div>
 </body>
 </html>"""
@@ -133,11 +123,11 @@ async def capture_frames() -> list[Image.Image]:
             for _ in range(hold):
                 frames.append(img.copy())
 
-        # Frame: launch panel (hold 8 frames = ~1.6s)
+        # Launch panel frame
         launch_html = """<!DOCTYPE html><html><head>
-        <style>* {{box-sizing:border-box;margin:0;padding:0}}
-        body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-              background:#0f1117;color:#e8edf5;width:640px;padding:28px}}</style>
+        <style>* {box-sizing:border-box;margin:0;padding:0}
+        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+              background:#0f1117;color:#e8edf5;width:640px;padding:28px}</style>
         </head><body>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px">
           <div style="width:22px;height:22px;border-radius:5px;
@@ -175,14 +165,11 @@ async def capture_frames() -> list[Image.Image]:
         </body></html>"""
         await snap(launch_html, hold=8)
 
-        # Frames: each step appears
         for i in range(len(STEPS)):
-            await snap(build_html(i, i), hold=3)      # step running (3 frames)
-            await snap(build_html(i + 1, None if i == len(STEPS)-1 else i+1), hold=2)  # step done
+            await snap(build_html(i, i), hold=3)
+            await snap(build_html(i + 1, None if i == len(STEPS)-1 else i+1), hold=2)
 
-        # Hold on completed state
         await snap(build_html(len(STEPS), None), hold=12)
-
         await browser.close()
 
     print(f"Captured {len(frames)} frames")
