@@ -3,6 +3,8 @@
 > **Turns 6 months of bank transactions into a cited, auditable credit memo in under 10 seconds.**  
 > Built for data analysts and fintech engineers who need to demonstrate production-grade AI systems.
 
+![Pipeline running step-by-step](docs/pipeline_demo.gif)
+
 ---
 
 ## Live Demo
